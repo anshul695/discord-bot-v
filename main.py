@@ -304,4 +304,31 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
+@bot.command()
+async def removewarn(ctx, member: discord.Member = None):
+    if member is None:
+        return await ctx.send("⚠️ Please mention a user to remove their latest warning.")
+
+    if member.id not in warns or not warns[member.id]:
+        return await ctx.send("❌ This user has no warnings.")
+
+    removed = warns[member.id].pop()
+
+    embed = discord.Embed(
+        title="✅ Warning Removed",
+        description=f"A warning for {member.mention} was removed.",
+        color=discord.Color.green(),
+        timestamp=ctx.message.created_at
+    )
+    embed.add_field(name="Original Reason", value=removed[0], inline=False)
+    embed.add_field(name="Removed By", value=ctx.author.mention, inline=False)
+    embed.set_thumbnail(url=member.display_avatar.url)
+
+    await ctx.send(embed=embed)
+
+    case_channel = discord.utils.get(ctx.guild.text_channels, name="cases")
+    if case_channel:
+        await case_channel.send(embed=embed)
+
+
 bot.run(os.getenv("TOKEN"))
