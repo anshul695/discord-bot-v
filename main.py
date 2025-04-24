@@ -258,6 +258,7 @@ async def help(ctx):
             "`%timeout @user seconds reason` – Timeout a user temporarily\n"
             "`%softban @user reason` – Ban and immediately unban (deletes messages)\n"
             "`%warn @user reason` – Warn a user"
+                "`%removewarn @user reason` – remove Warn from a user"
         ),
         inline=False
     )
@@ -326,9 +327,6 @@ async def removewarn(ctx, member: discord.Member = None):
 
     await ctx.send(embed=embed)
 
-    case_channel = discord.utils.get(ctx.guild.text_channels, name="cases")
-    if case_channel:
-        await case_channel.send(embed=embed)
 
 
 bot.run(os.getenv("TOKEN"))
