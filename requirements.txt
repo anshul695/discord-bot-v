@@ -1,3 +1,4 @@
 discord.py
 keep_alive
 replit
+python-dotenv
