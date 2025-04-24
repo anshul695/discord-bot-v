@@ -153,6 +153,8 @@ async def purge(ctx, amount: int):
     await ctx.send(f"✅ Deleted {amount} messages.", delete_after=5)
 
 @bot.command()
+afk_users = {}
+
 async def afk(ctx, *, reason="AFK"):
     afk_users[ctx.author.id] = reason
     embed = discord.Embed(
@@ -186,11 +188,6 @@ async def on_message(message):
             )
             await message.channel.send(embed=embed)
 
-    await bot.process_commands(message)
-
-
-
-    await bot.process_commands(message)
 @bot.command()
 @commands.has_permissions(manage_channels=True)
 async def lock(ctx):
@@ -300,11 +297,6 @@ async def help(ctx):
     embed.set_thumbnail(url=ctx.guild.icon.url if ctx.guild.icon else discord.Embed.Empty)
 
     await ctx.send(embed=embed)
-
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
 
     # ❌ Block Discord Invite Links (for non-admins/mods)
     if "discord.gg/" in message.content or "discord.com/invite/" in message.content:
