@@ -152,25 +152,43 @@ async def purge(ctx, amount: int):
     await ctx.channel.purge(limit=amount + 1)  # +1 to include the command message
     await ctx.send(f"✅ Deleted {amount} messages.", delete_after=5)
 
-afk_users = {}
-
 @bot.command()
 async def afk(ctx, *, reason="AFK"):
     afk_users[ctx.author.id] = reason
-    await ctx.send(f"🛌 {ctx.author.mention} is now AFK: {reason}")
-
+    embed = discord.Embed(
+        title="🛌 AFK Activated",
+        description=f"{ctx.author.mention} is now AFK: {reason}",
+        color=discord.Color.blurple()
+    )
+    await ctx.send(embed=embed)
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
+    # Remove AFK if the author was AFK
     if message.author.id in afk_users:
+        embed = discord.Embed(
+            title="🎉 Welcome Back!",
+            description=f"{message.author.mention}, your AFK status has been removed.",
+            color=discord.Color.green()
+        )
+        await message.channel.send(embed=embed)
         del afk_users[message.author.id]
-        await message.channel.send(f"🎉 Welcome back {message.author.mention}, I removed your AFK.")
 
+    # Let others know if they're pinging an AFK user
     for mention in message.mentions:
         if mention.id in afk_users:
-            await message.channel.send(f"📨 {mention.display_name} is AFK: {afk_users[mention.id]}")
+            embed = discord.Embed(
+                title="📨 User is AFK",
+                description=f"{mention.display_name} is AFK: {afk_users[mention.id]}",
+                color=discord.Color.orange()
+            )
+            await message.channel.send(embed=embed)
+
+    await bot.process_commands(message)
+
+
 
     await bot.process_commands(message)
 @bot.command()
