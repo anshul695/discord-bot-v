@@ -3,17 +3,20 @@ keep_alive()
 import discord
 from discord.ext import commands
 import os
+from datetime import timedelta
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="%", intents=intents, help_command=None)
 
+# Dictionary for AFK users
+afk_users = {}
+# Dictionary for warnings
+warns = {}
 
 @bot.event
 async def on_ready():
-        await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="you, be good or I'll spank"))
-        print(f'{bot.user} is online!')
-
-
+    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="you, be good or I'll spank"))
+    print(f'{bot.user} is online!')
 
 # TIMEOUT command
 @bot.command()
@@ -108,6 +111,11 @@ async def warn(ctx, member: discord.Member = None, *, reason: str = None):
         await ctx.send("⚠️ Please mention a user and provide a reason. Example: `%warn @user spamming`")
         return
 
+    if member.id not in warns:
+        warns[member.id] = []
+
+    warns[member.id].append(reason)
+
     embed = discord.Embed(
         title="⚠️ User Warned",
         description=f"{member.mention} has been warned.",
@@ -153,8 +161,6 @@ async def purge(ctx, amount: int):
     await ctx.send(f"✅ Deleted {amount} messages.", delete_after=5)
 
 @bot.command()
-afk_users = {}
-
 async def afk(ctx, *, reason="AFK"):
     afk_users[ctx.author.id] = reason
     embed = discord.Embed(
@@ -163,6 +169,7 @@ async def afk(ctx, *, reason="AFK"):
         color=discord.Color.blurple()
     )
     await ctx.send(embed=embed)
+
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -170,13 +177,13 @@ async def on_message(message):
 
     # Remove AFK if the author was AFK
     if message.author.id in afk_users:
+        del afk_users[message.author.id]
         embed = discord.Embed(
             title="🎉 Welcome Back!",
             description=f"{message.author.mention}, your AFK status has been removed.",
             color=discord.Color.green()
         )
         await message.channel.send(embed=embed)
-        del afk_users[message.author.id]
 
     # Let others know if they're pinging an AFK user
     for mention in message.mentions:
@@ -187,6 +194,8 @@ async def on_message(message):
                 color=discord.Color.orange()
             )
             await message.channel.send(embed=embed)
+
+    await bot.process_commands(message)
 
 @bot.command()
 @commands.has_permissions(manage_channels=True)
@@ -272,8 +281,8 @@ async def help(ctx):
             "`%unmute @user` – Unmute a muted user\n"
             "`%timeout @user seconds reason` – Timeout a user temporarily\n"
             "`%softban @user reason` – Ban and immediately unban (deletes messages)\n"
-            "`%warn @user reason` – Warn a user"
-                "`%removewarn @user reason` – remove Warn from a user"
+            "`%warn @user reason` – Warn a user\n"
+            "`%removewarn @user` – Remove the latest warning for a user"
         ),
         inline=False
     )
@@ -293,50 +302,11 @@ async def help(ctx):
     )
 
     # ℹ️ Info
-    embed.set_footer(text="Made with ❤️ by Anshhhulll")
-    embed.set_thumbnail(url=ctx.guild.icon.url if ctx.guild.icon else discord.Embed.Empty)
+    embed.set_footer(text=f"Requested by {ctx.author}")
 
     await ctx.send(embed=embed)
 
-    # ❌ Block Discord Invite Links (for non-admins/mods)
-    if "discord.gg/" in message.content or "discord.com/invite/" in message.content:
-        if not message.author.guild_permissions.manage_messages:
-            await message.delete()
+import os
 
-            embed = discord.Embed(
-                title="🚫 No Server Invites Allowed",
-                description=f"{message.author.mention}, sharing Discord server invite links is not allowed here.",
-                color=discord.Color.red(),
-                timestamp=message.created_at
-            )
-            embed.set_footer(text="Rule enforced by VeraMod")
-            await message.channel.send(embed=embed, delete_after=10)
-            return
+bot.run(os.getenv('TOKEN'))
 
-    await bot.process_commands(message)
-
-@bot.command()
-async def removewarn(ctx, member: discord.Member = None):
-    if member is None:
-        return await ctx.send("⚠️ Please mention a user to remove their latest warning.")
-
-    if member.id not in warns or not warns[member.id]:
-        return await ctx.send("❌ This user has no warnings.")
-
-    removed = warns[member.id].pop()
-
-    embed = discord.Embed(
-        title="✅ Warning Removed",
-        description=f"A warning for {member.mention} was removed.",
-        color=discord.Color.green(),
-        timestamp=ctx.message.created_at
-    )
-    embed.add_field(name="Original Reason", value=removed[0], inline=False)
-    embed.add_field(name="Removed By", value=ctx.author.mention, inline=False)
-    embed.set_thumbnail(url=member.display_avatar.url)
-
-    await ctx.send(embed=embed)
-
-
-
-bot.run(os.getenv("TOKEN"))
