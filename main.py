@@ -20,6 +20,7 @@ async def on_ready():
 
 # TIMEOUT command
 @bot.command()
+@commands.has_permissions(moderate_members=True)
 async def timeout(ctx, member: discord.Member = None, duration: int = None, *, reason: str = None):
     if not member or not duration or not reason:
         return await ctx.send("⚠️ Please mention a user, duration (in seconds), and a reason. Example: `%timeout @user 60 spamming`")
@@ -41,6 +42,7 @@ async def timeout(ctx, member: discord.Member = None, duration: int = None, *, r
 
 # BAN command
 @bot.command()
+@commands.has_permissions(ban_members=True)
 async def ban(ctx, member: discord.Member = None, *, reason: str = None):
     if not member or not reason:
         return await ctx.send("⚠️ Please mention a user and a reason. Example: `%ban @user spamming`")
@@ -61,6 +63,7 @@ async def ban(ctx, member: discord.Member = None, *, reason: str = None):
 
 # KICK command
 @bot.command()
+@commands.has_permissions(kick_members=True)
 async def kick(ctx, member: discord.Member = None, *, reason: str = None):
     if not member or not reason:
         return await ctx.send("⚠️ Please mention a user and a reason. Example: `%kick @user being rude`")
@@ -81,6 +84,7 @@ async def kick(ctx, member: discord.Member = None, *, reason: str = None):
 
 # MUTE command (role-based)
 @bot.command()
+@commands.has_permissions(manage_roles=True)
 async def mute(ctx, member: discord.Member = None, *, reason: str = None):
     if not member or not reason:
         return await ctx.send("⚠️ Please mention a user and a reason. Example: `%mute @user spamming`")
@@ -106,6 +110,7 @@ async def mute(ctx, member: discord.Member = None, *, reason: str = None):
     await ctx.send(embed=embed)
 
 @bot.command()
+@commands.has_permissions(kick_members=True)
 async def warn(ctx, member: discord.Member = None, *, reason: str = None):
     if member is None or reason is None:
         await ctx.send("⚠️ Please mention a user and provide a reason. Example: `%warn @user spamming`")
@@ -129,6 +134,7 @@ async def warn(ctx, member: discord.Member = None, *, reason: str = None):
     await ctx.send(embed=embed)
 
 @bot.command()
+@commands.has_permissions(manage_roles=True)
 async def unmute(ctx, member: discord.Member = None, *, reason: str = None):
     if not member:
         return await ctx.send("⚠️ Please mention a user to unmute. Example: `%unmute @user`")
@@ -264,6 +270,45 @@ async def softban(ctx, member: discord.Member = None, *, reason: str = None):
         await ctx.send(f"❌ Error: {e}")
 
 @bot.command()
+async def userinfo(ctx, member: discord.Member = None):
+    member = member or ctx.author
+    embed = discord.Embed(title=f"{member.name}'s Info", color=discord.Color.blue())
+    embed.add_field(name="ID", value=member.id)
+    embed.add_field(name="Joined", value=member.joined_at.strftime("%b %d, %Y"))
+    embed.add_field(name="Account Created", value=member.created_at.strftime("%b %d, %Y"))
+    embed.set_thumbnail(url=member.avatar.url if member.avatar else None)
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def serverinfo(ctx):
+    guild = ctx.guild
+    embed = discord.Embed(title=f"{guild.name} Server Info", color=discord.Color.green())
+    embed.add_field(name="Owner", value=guild.owner)
+    embed.add_field(name="Members", value=guild.member_count)
+    embed.add_field(name="Created", value=guild.created_at.strftime("%b %d, %Y"))
+    embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def ping(ctx):
+    await ctx.send(f"Pong! 🏓 `{round(bot.latency * 1000)}ms`")
+
+@bot.command()
+async def avatar(ctx, member: discord.Member = None):
+    member = member or ctx.author
+    await ctx.send(member.avatar.url)
+
+import random
+
+@bot.command()
+async def _8ball(ctx, *, question):
+    responses = [
+        "Yes.", "No.", "Maybe.", "Definitely!", "Absolutely not.",
+        "Ask again later.", "I'm not sure.", "Without a doubt.", "Nah.", "You wish."
+    ]
+    await ctx.send(f"🎱 {random.choice(responses)}")
+
+@bot.command()
 async def help(ctx):
     embed = discord.Embed(
         title="🛠️ VeraMod Bot Commands",
@@ -271,9 +316,23 @@ async def help(ctx):
         color=discord.Color.blue()
     )
 
-    # 🔨 Moderation Commands
+    # 👥 Member Commands
     embed.add_field(
-        name="🔨 Moderation",
+        name="👥 Member Commands",
+        value=(
+            "`%afk reason` – Set yourself as AFK\n"
+            "`%userinfo @user` – View user information\n"
+            "`%serverinfo` – View server information\n"
+            "`%avatar @user` – View someone's avatar\n"
+            "`%ping` – Check bot latency\n"
+            "`%8ball question` – Ask the magic 8ball a question"
+        ),
+        inline=False
+    )
+
+    # 🔨 Moderation Commands (Mods & Admins Only)
+    embed.add_field(
+        name="🔨 Moderation Commands",
         value=(
             "`%ban @user reason` – Ban a user\n"
             "`%kick @user reason` – Kick a user\n"
@@ -282,17 +341,7 @@ async def help(ctx):
             "`%timeout @user seconds reason` – Timeout a user temporarily\n"
             "`%softban @user reason` – Ban and immediately unban (deletes messages)\n"
             "`%warn @user reason` – Warn a user\n"
-            "`%removewarn @user` – Remove the latest warning for a user"
-        ),
-        inline=False
-    )
-
-    # ⚙️ Utility Commands
-    embed.add_field(
-        name="⚙️ Utility",
-        value=(
-            "`%purge amount` – Delete messages in bulk\n"
-            "`%afk reason` – Set yourself as AFK\n"
+            "`%removewarn @user` – Remove the latest warning for a user\n"
             "`%lock` – Lock the current channel\n"
             "`%unlock` – Unlock the current channel\n"
             "`%giverole @user Role Name` – Give a role to a user\n"
@@ -301,10 +350,20 @@ async def help(ctx):
         inline=False
     )
 
-    # ℹ️ Info
+    # ⚙️ Utility Commands (Mods Only)
+    embed.add_field(
+        name="⚙️ Utility Commands",
+        value=(
+            "`%purge amount` – Delete messages in bulk"
+        ),
+        inline=False
+    )
+
+    # ℹ️ Footer
     embed.set_footer(text=f"Requested by {ctx.author}")
 
     await ctx.send(embed=embed)
+
 
 import os
 
