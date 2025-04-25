@@ -282,12 +282,35 @@ async def userinfo(ctx, member: discord.Member = None):
 @bot.command()
 async def serverinfo(ctx):
     guild = ctx.guild
-    embed = discord.Embed(title=f"{guild.name} Server Info", color=discord.Color.green())
-    embed.add_field(name="Owner", value=guild.owner)
-    embed.add_field(name="Members", value=guild.member_count)
-    embed.add_field(name="Created", value=guild.created_at.strftime("%b %d, %Y"))
+
+    # List of founder user IDs
+    founder_ids = [1327923421442736180,1097776051393929227,904290766225027083]  # replace with actual Discord user IDs
+
+    founders = []
+    for founder_id in founder_ids:
+        user = guild.get_member(founder_id)
+        if user:
+            founders.append(user.mention)
+
+    founder_list = ", ".join(founders) if founders else "Not Found"
+
+    embed = discord.Embed(
+        title=f"Server Info - {guild.name}",
+        color=discord.Color.blue()
+    )
     embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+
+    embed.add_field(name="👑 Founders", value=founder_list, inline=False)
+    embed.add_field(name="📅 Created On", value=guild.created_at.strftime("%B %d, %Y"), inline=True)
+    embed.add_field(name="👥 Members", value=guild.member_count, inline=True)
+    embed.add_field(name="💬 Channels", value=len(guild.channels), inline=True)
+    embed.add_field(name="🔐 Roles", value=len(guild.roles), inline=True)
+    embed.add_field(name="🌍 Region", value=str(guild.preferred_locale).capitalize(), inline=True)
+
+    embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url)
+
     await ctx.send(embed=embed)
+
 
 @bot.command()
 async def ping(ctx):
