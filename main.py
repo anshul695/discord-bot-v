@@ -323,13 +323,14 @@ async def avatar(ctx, member: discord.Member = None):
 
 import random
 
-@bot.command()
-async def _8ball(ctx, *, question):
+@bot.command(name="8ball")
+async def eight_ball(ctx, *, question):
     responses = [
         "Yes.", "No.", "Maybe.", "Definitely!", "Absolutely not.",
         "Ask again later.", "I'm not sure.", "Without a doubt.", "Nah.", "You wish."
     ]
     await ctx.send(f"🎱 {random.choice(responses)}")
+
 
 @bot.command()
 async def help(ctx):
