@@ -1,7 +1,7 @@
 from keep_alive import keep_alive
 keep_alive()
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import os
 from datetime import timedelta
 
@@ -388,6 +388,52 @@ async def help(ctx):
 
     await ctx.send(embed=embed)
 
+
+# Store sticky messages
+sticky_data = {}
+
+@bot.command()
+@commands.has_permissions(manage_messages=True)
+async def sticky(ctx, channel: discord.TextChannel, *, message):
+    """Set a sticky message in a channel."""
+    sticky_data[channel.id] = {"message": message, "last_message_id": None}
+    
+    # Send the first sticky
+    sent_message = await channel.send(message)
+    sticky_data[channel.id]["last_message_id"] = sent_message.id
+    
+    await ctx.send(f"✅ Sticky message set for {channel.mention}.")
+
+@bot.command()
+@commands.has_permissions(manage_messages=True)
+async def removesticky(ctx, channel: discord.TextChannel):
+    """Remove sticky message from a channel."""
+    if channel.id in sticky_data:
+        del sticky_data[channel.id]
+        await ctx.send(f"🗑️ Sticky message removed from {channel.mention}.")
+    else:
+        await ctx.send(f"❌ No sticky message found in {channel.mention}.")
+
+# Listen to every new message
+@bot.event
+async def on_message(message):
+    await bot.process_commands(message)  # Important to allow other commands
+
+    if message.author.bot:
+        return
+
+    if message.channel.id in sticky_data:
+        # Delete old sticky
+        try:
+            old_message_id = sticky_data[message.channel.id]["last_message_id"]
+            old_message = await message.channel.fetch_message(old_message_id)
+            await old_message.delete()
+        except:
+            pass  # maybe deleted already
+
+        # Send new sticky
+        new_sticky = await message.channel.send(sticky_data[message.channel.id]["message"])
+        sticky_data[message.channel.id]["last_message_id"] = new_sticky.id
 
 import os
 
