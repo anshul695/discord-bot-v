@@ -441,7 +441,7 @@ import os
 invites_cache = {}
 user_invite_counts = {}
 
-WELCOME_CHANNEL_ID = 1365339429539024946  # Your welcome channel ID
+WELCOME_CHANNEL_ID = 1363797902291374110  # Your welcome channel ID
 
 @bot.event
 async def on_ready():
