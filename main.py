@@ -437,5 +437,117 @@ async def on_message(message):
 
 import os
 
+# -- Invite Tracking --
+invites_cache = {}
+user_invite_counts = {}
+
+WELCOME_CHANNEL_ID = 1365339429539024946  # Your welcome channel ID
+
+@bot.event
+async def on_ready():
+    print(f"✅ Logged in as {bot.user}")
+    # Cache invites when bot starts
+    for guild in bot.guilds:
+        invites_cache[guild.id] = await guild.invites()
+
+@bot.event
+async def on_member_join(member):
+    await asyncio.sleep(1)  # slight delay so invites update
+
+    guild = member.guild
+    before_invites = invites_cache.get(guild.id, [])
+    after_invites = await guild.invites()
+    invites_cache[guild.id] = after_invites
+
+    inviter = None
+    for invite in after_invites:
+        for old_invite in before_invites:
+            if invite.code == old_invite.code and invite.uses > old_invite.uses:
+                inviter = invite.inviter
+                break
+        if inviter:
+            break
+
+    welcome_channel = bot.get_channel(WELCOME_CHANNEL_ID)
+    if welcome_channel:
+        if inviter:
+            user_invite_counts[inviter.id] = user_invite_counts.get(inviter.id, 0) + 1
+            await welcome_channel.send(
+                f"👋 Welcome {member.mention} to **Veracity**!\n"
+                f"🎉 Invited by **{inviter.name}**."
+            )
+        else:
+            await welcome_channel.send(
+                f"👋 Welcome {member.mention} to **Veracity**!\n"
+                f"🎉 Couldn't detect who invited you."
+            )
+
+@bot.event
+async def on_member_remove(member):
+    guild = member.guild
+    invites_cache[guild.id] = await guild.invites()
+
+# -- Commands --
+
+@bot.command()
+async def invites(ctx, member: discord.Member = None):
+    """Check how many invites a user has."""
+    member = member or ctx.author
+    invites = user_invite_counts.get(member.id, 0)
+    await ctx.send(f"🔗 {member.mention} has **{invites}** invites!")
+
+@bot.command()
+async def inviteleaderboard(ctx):
+    """Top inviters leaderboard."""
+    sorted_invites = sorted(user_invite_counts.items(), key=lambda x: x[1], reverse=True)
+    pages = []
+    
+    for i in range(0, len(sorted_invites), 10):
+        chunk = sorted_invites[i:i+10]
+        description = ""
+        for index, (user_id, count) in enumerate(chunk, start=i+1):
+            user = ctx.guild.get_member(user_id)
+            if user:
+                description += f"**{index}.** {user.name} — {count} invites\n"
+            else:
+                description += f"**{index}.** Unknown User — {count} invites\n"
+        
+        embed = discord.Embed(
+            title="🏆 Invite Leaderboard",
+            description=description,
+            color=discord.Color.gold()
+        )
+        pages.append(embed)
+
+    if not pages:
+        await ctx.send("❌ No invites to display yet!")
+        return
+
+    current_page = 0
+    message = await ctx.send(embed=pages[current_page])
+
+    await message.add_reaction("⏪")
+    await message.add_reaction("⏩")
+
+    def check(reaction, user):
+        return user == ctx.author and str(reaction.emoji) in ["⏪", "⏩"] and reaction.message.id == message.id
+
+    while True:
+        try:
+            reaction, user = await bot.wait_for('reaction_add', timeout=60.0, check=check)
+
+            if str(reaction.emoji) == "⏩":
+                if current_page < len(pages) - 1:
+                    current_page += 1
+                    await message.edit(embed=pages[current_page])
+            elif str(reaction.emoji) == "⏪":
+                if current_page > 0:
+                    current_page -= 1
+                    await message.edit(embed=pages[current_page])
+
+            await message.remove_reaction(reaction, user)
+        except Exception:
+            break
+            
 bot.run(os.getenv('TOKEN'))
 
