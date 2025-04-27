@@ -436,5 +436,114 @@ async def on_message(message):
         sticky_data[message.channel.id]["last_message_id"] = new_sticky.id
 
 
+# Invite Cache
+invites_cache = {}
+
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}")
+    for guild in bot.guilds:
+        invites_cache[guild.id] = await guild.invites()
+
+@bot.event
+async def on_invite_create(invite):
+    invites_cache[invite.guild.id] = await invite.guild.invites()
+
+@bot.event
+async def on_invite_delete(invite):
+    invites_cache[invite.guild.id] = await invite.guild.invites()
+
+@bot.event
+async def on_member_join(member):
+    await asyncio.sleep(2)  # Wait to make sure invites update
+
+    invites_before = invites_cache.get(member.guild.id, [])
+    invites_after = await member.guild.invites()
+
+    inviter = None
+    for invite in invites_before:
+        for after_invite in invites_after:
+            if invite.code == after_invite.code and invite.uses < after_invite.uses:
+                inviter = invite.inviter
+                break
+
+    invites_cache[member.guild.id] = invites_after
+
+    welcome_channel = bot.get_channel(YOUR_WELCOME_CHANNEL_ID)  # Replace with your welcome channel ID
+    if inviter:
+        await welcome_channel.send(f"👋 Welcome {member.mention} to Veracity!\nInvited by: **{inviter}**")
+    else:
+        await welcome_channel.send(f"👋 Welcome {member.mention} to Veracity!\nCouldn't find who invited you!")
+
+# Command: %invites
+@bot.command()
+@commands.cooldown(1, 5, commands.BucketType.user)  # 1 use every 5 sec
+async def invites(ctx, member: discord.Member = None):
+    member = member or ctx.author
+    total_invites = 0
+    try:
+        invites = await ctx.guild.invites()
+        for invite in invites:
+            if invite.inviter == member:
+                total_invites += invite.uses
+        await ctx.send(f"🔗 {member.mention} has **{total_invites}** invites!")
+    except Exception as e:
+        await ctx.send("❌ Failed to fetch invites. Try again later.")
+
+# Command: %inviteleaderboard
+@bot.command(name="inviteleaderboard")
+@commands.cooldown(1, 10, commands.BucketType.user)
+async def inviteleaderboard(ctx):
+    try:
+        invites = await ctx.guild.invites()
+        invite_count = {}
+
+        for invite in invites:
+            if invite.inviter:
+                invite_count[invite.inviter] = invite_count.get(invite.inviter, 0) + invite.uses
+
+        if not invite_count:
+            return await ctx.send("❌ No invites to display yet!")
+
+        sorted_invites = sorted(invite_count.items(), key=lambda x: x[1], reverse=True)
+
+        pages = []
+        per_page = 10
+        for i in range(0, len(sorted_invites), per_page):
+            page = sorted_invites[i:i+per_page]
+            description = ""
+            for idx, (user, uses) in enumerate(page, start=i+1):
+                description += f"**{idx}.** [{user}](https://discord.com/users/{user.id}) — **{uses} invites**\n"
+            embed = discord.Embed(title="📈 Top Inviters", description=description, color=discord.Color.blurple())
+            pages.append(embed)
+
+        current_page = 0
+        message = await ctx.send(embed=pages[current_page])
+
+        if len(pages) > 1:
+            await message.add_reaction("⬅️")
+            await message.add_reaction("➡️")
+
+            def check(reaction, user):
+                return user == ctx.author and str(reaction.emoji) in ["⬅️", "➡️"] and reaction.message.id == message.id
+
+            while True:
+                try:
+                    reaction, user = await bot.wait_for("reaction_add", timeout=60.0, check=check)
+                    if str(reaction.emoji) == "➡️" and current_page < len(pages) - 1:
+                        current_page += 1
+                        await message.edit(embed=pages[current_page])
+                        await message.remove_reaction(reaction, user)
+                    elif str(reaction.emoji) == "⬅️" and current_page > 0:
+                        current_page -= 1
+                        await message.edit(embed=pages[current_page])
+                        await message.remove_reaction(reaction, user)
+                    else:
+                        await message.remove_reaction(reaction, user)
+                except asyncio.TimeoutError:
+                    break
+    except Exception as e:
+        await ctx.send("❌ Failed to fetch invite leaderboard. Try again later.")
+
 bot.run(os.getenv('TOKEN'))
 
