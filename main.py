@@ -8,7 +8,7 @@ from datetime import timedelta
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="%", intents=intents, help_command=None)
 
-# Dictionary for AFK users
+# Dictionary for AFK users g
 afk_users = {}
 # Dictionary for warnings
 warns = {}
