@@ -545,5 +545,121 @@ async def inviteleaderboard(ctx):
     except Exception as e:
         await ctx.send("❌ Failed to fetch invite leaderboard. Try again later.")
 
+import discord
+from discord.ext import commands, tasks
+from collections import defaultdict
+import random
+
+intents = discord.Intents.default()
+intents.members = True  # IMPORTANT: Enable member intents
+intents.guilds = True
+intents.invites = True
+intents.messages = True
+intents.message_content = True  # Needed for commands
+
+bot = commands.Bot(command_prefix="%", intents=intents)
+
+# Invite cache to track who invited whom
+invite_cache = {}
+
+# Invite counts
+user_invites = defaultdict(int)
+
+# Welcome channel ID
+WELCOME_CHANNEL_ID = 1363797902291374110
+
+# Random welcome messages
+welcome_messages = [
+    "🎉 Welcome {member} to Veracity! Invited by {inviter}. Let's get the hype started! 🚀",
+    "👋 Hey {member}, welcome aboard! Thanks to {inviter} for bringing you in!",
+    "✨ {member} just joined us, brought here by {inviter}! Hope you have an amazing time!",
+    "🔥 {member} landed into Veracity! A big shoutout to {inviter} for the invite!",
+    "🎊 {member} has entered the arena! {inviter} made it happen!",
+    "💥 {member} joins the chaos, thanks to {inviter}! Let's gooo!"
+]
+
+# Cache invites on bot ready
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}")
+    for guild in bot.guilds:
+        invites = await guild.invites()
+        invite_cache[guild.id] = {invite.code: invite.uses for invite in invites}
+    print("Invite cache populated.")
+
+# Update invite cache when invite is created or deleted
+@bot.event
+async def on_invite_create(invite):
+    invites = await invite.guild.invites()
+    invite_cache[invite.guild.id] = {i.code: i.uses for i in invites}
+
+@bot.event
+async def on_invite_delete(invite):
+    invites = await invite.guild.invites()
+    invite_cache[invite.guild.id] = {i.code: i.uses for i in invites}
+
+# When a member joins
+@bot.event
+async def on_member_join(member):
+    guild = member.guild
+    try:
+        # Fetch updated invites
+        invites_after = await guild.invites()
+        invites_before = invite_cache.get(guild.id, {})
+        
+        inviter = None
+        for invite in invites_after:
+            if invites_before.get(invite.code, 0) < invite.uses:
+                inviter = invite.inviter
+                user_invites[inviter.id] += 1
+                break
+        
+        # Update cache
+        invite_cache[guild.id] = {invite.code: invite.uses for invite in invites_after}
+
+        # Pick a random welcome message
+        welcome_msg = random.choice(welcome_messages)
+        welcome_msg = welcome_msg.format(member=member.mention, inviter=inviter.name if inviter else "Unknown")
+        
+        # Send to welcome channel
+        channel = guild.get_channel(WELCOME_CHANNEL_ID)
+        if channel:
+            await channel.send(welcome_msg)
+        
+    except Exception as e:
+        print(f"Error handling member join: {e}")
+
+# %invites command
+@bot.command(name="invites")
+async def invites(ctx, member: discord.Member = None):
+    member = member or ctx.author
+    count = user_invites.get(member.id, 0)
+    await ctx.send(f"📩 {member.mention} has **{count}** invites!")
+
+# %inviteleaderboard command
+@bot.command(name="inviteleaderboard", aliases=["inviteslb"])
+async def invite_leaderboard(ctx, page: int = 1):
+    entries = sorted(user_invites.items(), key=lambda x: x[1], reverse=True)
+    per_page = 10
+    pages = (len(entries) - 1) // per_page + 1
+    if page > pages or page < 1:
+        return await ctx.send(f"Invalid page number! There are only {pages} pages.")
+    
+    start = (page - 1) * per_page
+    end = start + per_page
+    leaderboard = ""
+    for idx, (user_id, count) in enumerate(entries[start:end], start=start + 1):
+        user = ctx.guild.get_member(user_id)
+        if user:
+            leaderboard += f"**{idx}.** {user.name} - **{count} invites**\n"
+    
+    embed = discord.Embed(
+        title="🏆 Veracity Invite Leaderboard",
+        description=leaderboard,
+        color=discord.Color.gold()
+    )
+    embed.set_footer(text=f"Page {page}/{pages}")
+    await ctx.send(embed=embed)
+
 bot.run(os.getenv('TOKEN'))
 
