@@ -12,7 +12,7 @@ keep_alive()
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="%", intents=intents, help_command=None)
 
-# Dictionaries
+# Dictionaries 9
 afk_users = {}
 warns = {}
 
