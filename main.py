@@ -441,7 +441,7 @@ import discord
 
 
 @bot.event
-@bot.commands()
+@bot.command()
 async def apply(ctx):
     class AppDropdown(discord.ui.Select):
         def __init__(self):
