@@ -522,10 +522,7 @@ async def apply(ctx):
             self.form_url = url
 
         async def callback(self, interaction: discord.Interaction):
-            await interaction.response.send_message(
-                f"✅ Thanks for applying for **{self.label}**!\n📩 Fill out the form here: {self.form_url}\n\nPlease answer honestly for a valid chance at selection.",
-                ephemeral=True
-            )
+            
             try:
                 await interaction.user.send(
                     f"🎉 **Thanks for applying for {self.label}!**\n📝 Fill your form here: {self.form_url}\n\nBe honest and detailed in your answers!"
