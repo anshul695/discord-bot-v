@@ -440,7 +440,7 @@ from discord.ext import commands
 import discord
 
 
-@bot.event
+
 @bot.command()
 async def apply(ctx):
     class AppDropdown(discord.ui.Select):
