@@ -9,7 +9,7 @@ from collections import defaultdict
 
 keep_alive()
 
-# Bot Setup
+# Bot Setup h
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="%", intents=intents, help_command=None)
 
