@@ -551,6 +551,112 @@ async def apply(ctx):
 
     await ctx.send(embed=embed, view=view)
 
+from collections import defaultdict
+from discord.ext import commands, tasks
+import discord
+
+invites_data = {}
+
+@bot.event
+async def on_ready():
+    print("📊 Loading invite cache...")
+    for guild in bot.guilds:
+        invites_data[guild.id] = await guild.invites()
+    print("✅ Invite cache ready!")
+
+@bot.event
+async def on_member_join(member):
+    try:
+        old_invites = invites_data[member.guild.id]
+        new_invites = await member.guild.invites()
+        used_invite = None
+
+        for invite in new_invites:
+            for old in old_invites:
+                if invite.code == old.code and invite.uses > old.uses:
+                    used_invite = invite
+                    break
+
+        invites_data[member.guild.id] = new_invites
+
+        if used_invite:
+            inviter = used_invite.inviter
+            if hasattr(bot, "invite_tracker"):
+                if member.guild.id not in bot.invite_tracker:
+                    bot.invite_tracker[member.guild.id] = defaultdict(int)
+                bot.invite_tracker[member.guild.id][inviter.id] += 1
+        else:
+            print("⚠️ Couldn't detect invite used.")
+
+    except Exception as e:
+        print(f"Error on member join: {e}")
+
+@bot.command()
+async def invites(ctx, member: discord.Member = None):
+    member = member or ctx.author
+    count = 0
+    if hasattr(bot, "invite_tracker"):
+        count = bot.invite_tracker.get(ctx.guild.id, {}).get(member.id, 0)
+
+    embed = discord.Embed(
+        title="📨 Invite Stats",
+        description=f"{member.mention} has invited **{count}** member(s).",
+        color=discord.Color.blue()
+    )
+    await ctx.send(embed=embed)
+
+class InviteBoard(discord.ui.View):
+    def __init__(self, data, page=0):
+        super().__init__(timeout=60)
+        self.data = data
+        self.page = page
+        self.max_pages = (len(data) - 1) // 10
+
+    async def send_page(self, interaction):
+        start = self.page * 10
+        end = start + 10
+        entries = list(self.data.items())[start:end]
+
+        embed = discord.Embed(
+            title="🏆 Top Inviters",
+            color=discord.Color.gold()
+        )
+        for i, (user_id, count) in enumerate(entries, start=start + 1):
+            user = interaction.guild.get_member(user_id)
+            name = user.mention if user else f"<@{user_id}>"
+            embed.add_field(name=f"#{i}", value=f"{name} — **{count} invites**", inline=False)
+
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="⏪ Prev", style=discord.ButtonStyle.blurple)
+    async def prev(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.page > 0:
+            self.page -= 1
+        await self.send_page(interaction)
+
+    @discord.ui.button(label="Next ⏩", style=discord.ButtonStyle.blurple)
+    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.page < self.max_pages:
+            self.page += 1
+        await self.send_page(interaction)
+
+@bot.command()
+async def invboard(ctx):
+    guild_data = bot.invite_tracker.get(ctx.guild.id, {}) if hasattr(bot, "invite_tracker") else {}
+    if not guild_data:
+        return await ctx.send("❌ No invite data yet.")
+
+    sorted_data = dict(sorted(guild_data.items(), key=lambda x: x[1], reverse=True)[:20])
+    view = InviteBoard(sorted_data)
+    embed = discord.Embed(title="🏆 Top Inviters", color=discord.Color.gold())
+    
+    for i, (user_id, count) in enumerate(list(sorted_data.items())[:10], start=1):
+        user = ctx.guild.get_member(user_id)
+        name = user.mention if user else f"<@{user_id}>"
+        embed.add_field(name=f"#{i}", value=f"{name} — **{count} invites**", inline=False)
+
+    await ctx.send(embed=embed, view=view)
+
 
 # Run bot
 bot.run(os.getenv('TOKEN'))
