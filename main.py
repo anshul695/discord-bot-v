@@ -5,7 +5,7 @@ import asyncio
 from datetime import timedelta
 from keep_alive import keep_alive  # Assuming keep_alive.py is in the same directory
 import random  # Import the random module
-from collections import defaultdict
+
 
 keep_alive()
 
@@ -440,7 +440,7 @@ from discord.ext import commands
 import discord
 
 
-
+@bot.event
 async def apply(ctx):
     class AppDropdown(discord.ui.Select):
         def __init__(self):
