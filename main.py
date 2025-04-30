@@ -489,10 +489,11 @@ async def on_member_join(member):
     guild = member.guild
     if guild.id not in invite_cache:
         await update_invite_cache()
-        return
+
     try:
         new_invites = await guild.invites()
         used_invite = None
+
         for invite in new_invites:
             if invite.code in invite_cache[guild.id]:
                 if invite.uses > invite_cache[guild.id][invite.code].uses:
@@ -500,22 +501,32 @@ async def on_member_join(member):
                     break
             else:
                 used_invite = invite  # New invite was likely used
+
         if used_invite:
             inviter = used_invite.inviter
+
+            # Count invites
             if guild.id not in bot.invite_counts:
                 bot.invite_counts[guild.id] = {}
             if inviter.id not in bot.invite_counts[guild.id]:
                 bot.invite_counts[guild.id][inviter.id] = 0
             bot.invite_counts[guild.id][inviter.id] += 1
-            welcome_channel = bot.get_channel(WELCOME_CHANNEL_ID)
+
+            # Send welcome message
+            welcome_channel = guild.get_channel(WELCOME_CHANNEL_ID) or await bot.fetch_channel(WELCOME_CHANNEL_ID)
             if welcome_channel:
-                welcome_message = random.choice(welcome_messages).format(member, inviter.mention)
-                await welcome_channel.send(welcome_message)
+                message = random.choice(welcome_messages).format(member, inviter.mention)
+                await welcome_channel.send(message)
+            else:
+                print(f"⚠️ Could not find welcome channel ID {WELCOME_CHANNEL_ID} in {guild.name}")
+
         await update_invite_cache()
+
     except discord.Forbidden:
-        print(f"Bot does not have 'Manage Guild' permission to fetch invites in guild: {guild.name} ({guild.id})")
+        print(f"Bot lacks permissions in guild: {guild.name} ({guild.id})")
     except Exception as e:
         print(f"An error occurred during member join: {e}")
+
 
 @bot.event
 async def on_member_remove(member):
