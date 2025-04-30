@@ -549,8 +549,7 @@ if guild.id in bot.invite_counts:
 user_id = member.id if member else ctx.author.id
 user = member if member else ctx.author
 if user_id in bot.invite_counts[guild.id]:
-await ctx.send(f"**{user.display_name}** has **{bot.invite_counts[guild.id][user_id]}**
-invites.")
+await ctx.send(f"**{user.display_name}** has **{bot.invite_counts[guild.id][user_id]}**invites.")
 else:
 await ctx.send(f"**{user.display_name}** has no recorded invites yet.")
 else:
