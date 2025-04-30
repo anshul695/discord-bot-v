@@ -468,8 +468,15 @@ async def update_invite_cache():
         try:
             invites = await guild.invites()
             invite_cache[guild.id] = {invite.code: invite for invite in invites}
+
+            if guild.id not in bot.invite_counts:
+                bot.invite_counts[guild.id] = {}
+            for invite in invites:
+                inviter = invite.inviter
+                if inviter:
+                    bot.invite_counts[guild.id][inviter.id] = bot.invite_counts[guild.id].get(inviter.id, 0)
         except discord.Forbidden:
-            print(f"Bot does not have 'Manage Guild' permission in guild: {guild.name} ({guild.id})")
+            print(f"[!] Missing 'Manage Server' permission in {guild.name}")
 
 @bot.event
 async def on_ready():
@@ -513,7 +520,7 @@ async def on_member_join(member):
             bot.invite_counts[guild.id][inviter.id] += 1
 
             # Send welcome message
-            welcome_channel = guild.get_channel(WELCOME_CHANNEL_ID) or await bot.fetch_channel(WELCOME_CHANNEL_ID)
+           welcome_channel = guild.get_channel(WELCOME_CHANNEL_ID) or await bot.fetch_channel(WELCOME_CHANNEL_ID)
             if welcome_channel:
                 message = random.choice(welcome_messages).format(member, inviter.mention)
                 await welcome_channel.send(message)
