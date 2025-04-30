@@ -510,8 +510,7 @@ inviter.mention)
 await welcome_channel.send(welcome_message)
 await update_invite_cache()
 except discord.Forbidden:
-print(f"Bot does not have 'Manage Guild' permission to fetch invites in guild: {guild.name}
-({guild.id})")
+print(f"Bot does not have 'Manage Guild' permission to fetch invites in guild: {guild.name}({guild.id})")
 except Exception as e:
 print(f"An error occurred during member join: {e}")
 @bot.event
