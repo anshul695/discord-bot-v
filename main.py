@@ -435,11 +435,16 @@ async def on_message(message):
     await bot.process_commands(message)
 
 
-# invites
+import random
+from discord.ext import commands
+import discord
 
-WELCOME_CHANNEL_ID = 1363797902291374110  # Replace with your welcome channel ID
+WELCOME_CHANNEL_ID = 1363797902291374110  # replace with your welcome channel ID
 
 invite_cache = {}
+invite_counts = {}  # user_id: number of invites
+user_invited_by = {}  # user_id: inviter_id
+
 welcome_messages = [
     "👋 Hey {0.mention}! Welcome to the server 🎉. You were invited by **{1}**.",
     "🚀 Greetings, {0.mention}! Glad you're here ✨. **{1}** sent you our way.",
@@ -463,140 +468,96 @@ welcome_messages = [
     "✨ A friendly welcome to {0.mention}! Thanks to **{1}** for the invite 😊."
 ]
 
-async def update_invite_cache():
+@bot.event
+async def on_ready():
+    print(f"✅ {bot.user} is ready.")
+    await cache_all_invites()
+
+async def cache_all_invites():
     for guild in bot.guilds:
         try:
             invites = await guild.invites()
-            invite_cache[guild.id] = {invite.code: invite for invite in invites}
-
-            if guild.id not in bot.invite_counts:
-                bot.invite_counts[guild.id] = {}
-            for invite in invites:
-                inviter = invite.inviter
-                if inviter:
-                    bot.invite_counts[guild.id][inviter.id] = bot.invite_counts[guild.id].get(inviter.id, 0)
-        except discord.Forbidden:
-            print(f"[!] Missing 'Manage Server' permission in {guild.name}")
-
-@bot.event
-async def on_ready():
-    print(f'Logged in as {bot.user.name}')
-    await update_invite_cache()
+            invite_cache[guild.id] = {invite.code: invite.uses for invite in invites}
+        except Exception as e:
+            print(f"Failed to cache invites for {guild.name}: {e}")
 
 @bot.event
 async def on_invite_create(invite):
-    await update_invite_cache()
+    await cache_all_invites()
 
 @bot.event
 async def on_invite_delete(invite):
-    await update_invite_cache()
+    await cache_all_invites()
 
 @bot.event
 async def on_member_join(member):
+    await asyncio.sleep(1)  # Give Discord time to update invites
     guild = member.guild
-    if guild.id not in invite_cache:
-        await update_invite_cache()
 
     try:
         new_invites = await guild.invites()
-        used_invite = None
-
-        for invite in new_invites:
-            if invite.code in invite_cache[guild.id]:
-                if invite.uses > invite_cache[guild.id][invite.code].uses:
-                    used_invite = invite
-                    break
-            else:
-                used_invite = invite  # New invite was likely used
-
-        if used_invite:
-            inviter = used_invite.inviter
-
-            # Count invites
-            if guild.id not in bot.invite_counts:
-                bot.invite_counts[guild.id] = {}
-            if inviter.id not in bot.invite_counts[guild.id]:
-                bot.invite_counts[guild.id][inviter.id] = 0
-            bot.invite_counts[guild.id][inviter.id] += 1
-
-            # Send welcome message
-           welcome_channel = guild.get_channel(WELCOME_CHANNEL_ID) or await bot.fetch_channel(WELCOME_CHANNEL_ID)
-            if welcome_channel:
-                message = random.choice(welcome_messages).format(member, inviter.mention)
-                await welcome_channel.send(message)
-            else:
-                print(f"⚠️ Could not find welcome channel ID {WELCOME_CHANNEL_ID} in {guild.name}")
-
-        await update_invite_cache()
-
     except discord.Forbidden:
-        print(f"Bot lacks permissions in guild: {guild.name} ({guild.id})")
-    except Exception as e:
-        print(f"An error occurred during member join: {e}")
+        print("Missing 'Manage Server' permission.")
+        return
 
+    old_invites = invite_cache.get(guild.id, {})
+    used_invite = None
+
+    for invite in new_invites:
+        if invite.code in old_invites:
+            if invite.uses > old_invites[invite.code]:
+                used_invite = invite
+                break
+        else:
+            used_invite = invite
+            break
+
+    invite_cache[guild.id] = {invite.code: invite.uses for invite in new_invites}
+
+    if used_invite and used_invite.inviter:
+        inviter = used_invite.inviter
+        invite_counts[inviter.id] = invite_counts.get(inviter.id, 0) + 1
+        user_invited_by[member.id] = inviter.id
+
+        welcome_channel = guild.get_channel(WELCOME_CHANNEL_ID) or await bot.fetch_channel(WELCOME_CHANNEL_ID)
+        if welcome_channel:
+            welcome_msg = random.choice(welcome_messages).format(member, inviter.mention)
+            await welcome_channel.send(welcome_msg)
 
 @bot.event
 async def on_member_remove(member):
-    guild = member.guild
-    if guild.id in bot.invite_counts:
-        for inviter_id, count in bot.invite_counts[guild.id].items():
-            try:
-                async for entry in guild.audit_logs(limit=10, action=discord.AuditLogAction.kick):
-                    if entry.target == member and entry.user.id == inviter_id:
-                        bot.invite_counts[guild.id][inviter_id] -= 1
-                        if bot.invite_counts[guild.id][inviter_id] < 0:
-                            bot.invite_counts[guild.id][inviter_id] = 0
-                        return
-                async for entry in guild.audit_logs(limit=10, action=discord.AuditLogAction.ban):
-                    if entry.target == member and entry.user.id == inviter_id:
-                        bot.invite_counts[guild.id][inviter_id] -= 1
-                        if bot.invite_counts[guild.id][inviter_id] < 0:
-                            bot.invite_counts[guild.id][inviter_id] = 0
-                        return
-            except discord.Forbidden:
-                print(f"Bot does not have 'View Audit Log' permission in guild: {guild.name} ({guild.id})")
-            except Exception as e:
-                print(f"An error occurred while checking audit logs: {e}")
-        # Fallback: If no direct kick/ban found, we can't reliably remove an invite.
-        # A more accurate system would require storing who invited whom.
+    inviter_id = user_invited_by.get(member.id)
+    if inviter_id and inviter_id in invite_counts:
+        invite_counts[inviter_id] = max(0, invite_counts[inviter_id] - 1)
+        del user_invited_by[member.id]
 
 @bot.command()
 async def invite(ctx, member: discord.Member = None):
-    """Shows your invite count or the invite count of another member."""
-    guild = ctx.guild
-    if guild.id in bot.invite_counts:
-        user_id = member.id if member else ctx.author.id
-        user = member if member else ctx.author
-        if user_id in bot.invite_counts[guild.id]:
-            await ctx.send(f"**{user.display_name}** has **{bot.invite_counts[guild.id][user_id]}** invites.")
-        else:
-            await ctx.send(f"**{user.display_name}** has no recorded invites yet.")
-    else:
-        await ctx.send("Invite tracking has not started in this server yet.")
+    """Check how many people you or someone else has invited."""
+    target = member or ctx.author
+    count = invite_counts.get(target.id, 0)
+    await ctx.send(f"📨 **{target.display_name}** has invited **{count}** member(s)!")
 
 @bot.command()
 async def invboard(ctx, page: int = 1):
-    """Shows the top 20 inviters (10 per page)."""
-    guild = ctx.guild
-    if guild.id in bot.invite_counts:
-        sorted_inviters = sorted(bot.invite_counts[guild.id].items(), key=lambda item: item[1], reverse=True)
-        total_inviters = len(sorted_inviters)
-        start_index = (page - 1) * 10
-        end_index = min(start_index + 10, total_inviters)
-        if start_index >= total_inviters or page < 1:
-            await ctx.send("Invalid page number.")
-            return
-        embed = discord.Embed(title=f"Top Inviters (Page {page})", color=discord.Color.blurple())
-        for i in range(start_index, end_index):
-            user_id, invite_count = sorted_inviters[i]
-            user = bot.get_user(user_id)
-            if user:
-                embed.add_field(name=f"{i + 1}. {user.display_name}", value=f"{invite_count} invites", inline=False)
-        await ctx.send(embed=embed)
-    else:
-        await ctx.send("Invite tracking has not started in this server yet.")
+    """View top inviters."""
+    sorted_invites = sorted(invite_counts.items(), key=lambda x: x[1], reverse=True)
+    per_page = 10
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_data = sorted_invites[start:end]
 
-bot.invite_counts = {}  # Initialize invite counts dictionary
+    if not page_data:
+        return await ctx.send("🚫 No inviters found or invalid page number.")
+
+    embed = discord.Embed(title=f"🏆 Invite Leaderboard (Page {page})", color=discord.Color.blue())
+    for i, (user_id, count) in enumerate(page_data, start=start + 1):
+        user = bot.get_user(user_id)
+        name = user.name if user else f"User ID: {user_id}"
+        embed.add_field(name=f"{i}. {name}", value=f"Invites: {count}", inline=False)
+
+    await ctx.send(embed=embed)
+
 
 async def apply(ctx):
     class AppDropdown(discord.ui.Select):
