@@ -536,8 +536,7 @@ if bot.invite_counts[guild.id][inviter_id] < 0:
 bot.invite_counts[guild.id][inviter_id] = 0
 return # Found a ban by this inviter, assuming they invited
 except discord.Forbidden:
-print(f"Bot does not have 'View Audit Log' permission in guild: {guild.name}
-({guild.id})")
+print(f"Bot does not have 'View Audit Log' permission in guild: {guild.name}({guild.id})")
 except Exception as e:
 print(f"An error occurred while checking audit logs: {e}")
 # Fallback: If no direct kick/ban found, we can't reliably remove an invite.
