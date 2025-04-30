@@ -527,6 +527,7 @@ async def apply(ctx):
                 await interaction.user.send(
                     f"🎉 **Thanks for applying for {self.label}!**\n📝 Fill your form here: {self.form_url}\n\nBe honest and detailed in your answers!"
                 )
+                await interaction.response.send_message("📩 We've sent you a DM with the application form. Please check your inbox!", ephemeral=True)
             except discord.Forbidden:
                 await interaction.followup.send("⚠️ I couldn't DM you. Please enable DMs and try again.", ephemeral=True)
 
