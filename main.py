@@ -512,6 +512,46 @@ async def on_member_join(member):
     welcome_message = random.choice(welcome_messages)
     await send_with_rate_limit(welcome_channel, welcome_message)
 
+@bot.command()
+async def apply(ctx):
+    view = discord.ui.View(timeout=None)
+
+    class AppButton(discord.ui.Button):
+        def __init__(self, label, url, style=discord.ButtonStyle.primary, custom_id=None):
+            super().__init__(label=label, style=style, custom_id=custom_id)
+            self.form_url = url
+
+        async def callback(self, interaction: discord.Interaction):
+            await interaction.response.send_message(
+                f"✅ Thanks for applying for **{self.label}**!\n📩 Fill out the form here: {self.form_url}\n\nPlease answer honestly for a valid chance at selection.",
+                ephemeral=True
+            )
+            try:
+                await interaction.user.send(
+                    f"🎉 **Thanks for applying for {self.label}!**\n📝 Fill your form here: {self.form_url}\n\nBe honest and detailed in your answers!"
+                )
+            except discord.Forbidden:
+                await interaction.followup.send("⚠️ I couldn't DM you. Please enable DMs and try again.", ephemeral=True)
+
+    # Add your buttons here (label = department, url = form link)
+    view.add_item(AppButton("Tournament Staff", "https://alphaenforcers.blogspot.com/p/apply-to-be-part-of-our-management.html"))
+    view.add_item(AppButton("Esports Staff", "https://alphaenforcers.blogspot.com/p/apply-to-be-part-of-our-management.html"))
+    view.add_item(AppButton("Clubs Manager", "https://alphaenforcers.blogspot.com/p/apply-to-be-part-of-our-management.html"))
+    view.add_item(AppButton("Server Moderation", "https://alphaenforcers.blogspot.com/p/apply-to-be-part-of-our-management.html"))
+    view.add_item(AppButton("Collab application", "https://alphaenforcers.blogspot.com/p/apply-to-be-part-of-our-management.html"))
+
+    embed = discord.Embed(
+        title="📋 Applications for joining our staff team and for serious and beneficial collaborations and sponsorships",
+        description=(
+            "Interested in joining our staff or have any good deal as a collab/sponsorship? Click a button below to receive the application form.\n"
+            "🧠 Be honest and complete the form seriously. We'll get back to you soon!"
+        ),
+        color=discord.Color.blue()
+    )
+    embed.set_footer(text="Anshhhulll | VRT Board of Directors")
+    embed.set_thumbnail(url=ctx.guild.icon.url if ctx.guild.icon else discord.Embed.Empty)
+
+    await ctx.send(embed=embed, view=view)
 
 
 # Run bot
