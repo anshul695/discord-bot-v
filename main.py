@@ -514,42 +514,45 @@ async def on_member_join(member):
 
 @bot.command()
 async def apply(ctx):
-    view = discord.ui.View(timeout=None)
-
-    class AppButton(discord.ui.Button):
-        def __init__(self, label, url, style=discord.ButtonStyle.primary, custom_id=None):
-            super().__init__(label=label, style=style, custom_id=custom_id)
-            self.form_url = url
+    class AppDropdown(discord.ui.Select):
+        def __init__(self):
+            options = [
+                discord.SelectOption(label="Tournament Staff", description="Apply as a Tournament Staff"),
+                discord.SelectOption(label="Esports Staff", description="Apply as an Esports Staff"),
+                discord.SelectOption(label="Clubs Manager", description="Apply as a Clubs Manager"),
+                discord.SelectOption(label="Server Moderation", description="Apply for Moderation role"),
+                discord.SelectOption(label="Collab application", description="Apply for a Collaboration/Sponsorship")
+            ]
+            super().__init__(placeholder="Choose Application Type", min_values=1, max_values=1, options=options)
 
         async def callback(self, interaction: discord.Interaction):
-            
+            form_url = "https://alphaenforcers.blogspot.com/p/apply-to-be-part-of-our-management.html"
+
             try:
                 await interaction.user.send(
-                    f"🎉 **Thanks for applying for {self.label}!**\n📝 Fill your form here: {self.form_url}\n\nBe honest and detailed in your answers!"
+                    f"🎉 **Thanks for applying for {self.values[0]}!**\n📝 Fill your form here: {form_url}\n\nBe honest and detailed in your answers!"
                 )
                 await interaction.response.send_message("📩 We've sent you a DM with the application form. Please check your inbox!", ephemeral=True)
             except discord.Forbidden:
-                await interaction.followup.send("⚠️ I couldn't DM you. Please enable DMs and try again.", ephemeral=True)
+                await interaction.response.send_message("⚠️ I couldn't DM you. Please enable DMs and try again.", ephemeral=True)
 
-    # Add your buttons here (label = department, url = form link)
-    view.add_item(AppButton("Tournament Staff", "https://alphaenforcers.blogspot.com/p/apply-to-be-part-of-our-management.html"))
-    view.add_item(AppButton("Esports Staff", "https://alphaenforcers.blogspot.com/p/apply-to-be-part-of-our-management.html"))
-    view.add_item(AppButton("Clubs Manager", "https://alphaenforcers.blogspot.com/p/apply-to-be-part-of-our-management.html"))
-    view.add_item(AppButton("Server Moderation", "https://alphaenforcers.blogspot.com/p/apply-to-be-part-of-our-management.html"))
-    view.add_item(AppButton("Collab application", "https://alphaenforcers.blogspot.com/p/apply-to-be-part-of-our-management.html"))
+    class AppDropdownView(discord.ui.View):
+        def __init__(self):
+            super().__init__(timeout=None)
+            self.add_item(AppDropdown())
 
     embed = discord.Embed(
-        title="📋 Applications for joining our staff team and for serious and beneficial collaborations and sponsorships",
+        title="📋 Applications for joining our staff team and for collaborations/sponsorships",
         description=(
-            "Interested in joining our staff or have any good deal as a collab/sponsorship? Click a button below to receive the application form.\n"
-            "🧠 Be honest and complete the form seriously. We'll get back to you soon!"
+            "Interested in joining our staff or have a good collab/sponsorship deal?\n"
+            "🧠 Use the dropdown below to choose your application type and receive the form in DMs!"
         ),
         color=discord.Color.blue()
     )
     embed.set_footer(text="Anshhhulll | VRT Board of Directors")
     embed.set_thumbnail(url=ctx.guild.icon.url if ctx.guild.icon else discord.Embed.Empty)
 
-    await ctx.send(embed=embed, view=view)
+    await ctx.send(embed=embed, view=AppDropdownView())
 
 from collections import defaultdict
 from discord.ext import commands, tasks
