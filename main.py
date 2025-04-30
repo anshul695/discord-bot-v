@@ -5,6 +5,7 @@ import asyncio
 from datetime import timedelta
 from keep_alive import keep_alive  # Assuming keep_alive.py is in the same directory
 import random  # Import the random module
+from collections import defaultdict
 
 keep_alive()
 
@@ -434,229 +435,152 @@ async def on_message(message):
     await bot.process_commands(message)
 
 
+# invites
 
-import discord
-from discord.ext import commands
-import random
-from collections import defaultdict
 
-# --- Configuration ---
-WELCOME_CHANNEL_ID = 1363797902291374110  # Keep your welcome channel ID
-WELCOME_MESSAGES = [
-    f"🎉 Welcome {{member.mention}} to the server! Invited by **{{inviter_name}}**! Let's get this party started! 🎊",
-    f"👋 Hey {{member.mention}}, welcome aboard! Huge thanks to **{{inviter_name}}** for the invite! 🙌",
-    f"🚀 {{member.mention}} just landed! Invited by **{{inviter_name}}**! Let's make some memories! 💥",
-    f"🎮 Welcome {{member.mention}}, our newest player! Invited by the awesome **{{inviter_name}}**! 🙏",
-    f"🌟 {{member.mention}} has joined the crew! Big shoutout to **{{inviter_name}}** for the invite! 💯",
-    f"💫 Welcome {{member.mention}}! **{{inviter_name}}** is the legend who brought you here! 🌈",
-    f"🔥 {{member.mention}} just arrived! Invited by the one and only **{{inviter_name}}**! 🌟",
-    f"🏆 Cheers {{member.mention}}! **{{inviter_name}}** did an amazing job bringing you here! 🥳",
-    f"🎉 A new member, {{member.mention}}! Huge thanks to **{{inviter_name}}** for the invite! 🎈",
-    f"🎤 Everyone, please welcome {{member.mention}} to the fam! Invited by **{{inviter_name}}**! 🙌",
-    f"🚀 {{member.mention}} has arrived! Big shoutout to **{{inviter_name}}** for the invite! Let's make it epic! 🎮",
-    f"💥 Welcome {{member.mention}}! Thanks to **{{inviter_name}}**, the legend who made this happen! 💪",
-    f"🌍 {{member.mention}} just joined us! **{{inviter_name}}** is the one who brought you here! 🎉",
-    f"🌟 Hey{{member.mention}}, welcome! Thanks to **{{inviter_name}}** for the warm invite! 🌈",
-    f"🎉 A warm welcome to {{member.mention}}! **{{inviter_name}}** is the MVP here! 💯",
-    f"🎈 Hooray, {{member.mention}} is here! Invited by **{{inviter_name}}**, let's make this a blast! 🎉",
-    f"🎮 Welcome {{member.mention}}, ready to join the action! Thanks to **{{inviter_name}}** for the invite! 🚀",
-    f"🎉 Woohoo! {{member.mention}} has joined! Shoutout to **{{inviter_name}}** for the invite! 🔥"
+WELCOME_CHANNEL_ID = 123456789012345678 # Replace with your welcome channel ID
+
+invite_cache = {}
+welcome_messages = [
+"👋 Hey {0.mention}! Welcome to the server 🎉. You were invited by **{1}**.",
+"🚀 Greetings, {0.mention}! Glad you're here ✨. **{1}** sent you our way.",
+"🌟 A warm welcome to you, {0.mention}! Thanks to **{1}** for bringing you in 😊.",
+"🎉 Welcome aboard, {0.mention}! **{1}** invited you to join the fun 😄.",
+"👋 Hello {0.mention}! We're happy to have you 🤗. Invited by **{1}**.",
+"✨ Hey there, {0.mention}! Thanks for joining 🙏. **{1}** is the one to thank for the invite.",
+"🌟 Welcome, welcome {0.mention}! **{1}** invited you. Make yourself at home! 🏡",
+"🚀 Glad to see you, {0.mention}! **{1}** thought you'd fit right in 😉.",
+"🎉 A big hello to {0.mention}! You were invited by the awesome **{1}** 😎.",
+"👋 Welcome to the community, {0.mention}! **{1}** extended the invitation 👍.",
+"🌟 Hi {0.mention}! So glad you joined us 😄. **{1}** is your inviter.",
+"🚀 Welcome {0.mention}! We hope you enjoy your time here 😊. Invited by **{1}**.",
+"🎉 Hey {0.mention}! Thanks for accepting the invite from **{1}** 🙏.",
+"✨ A hearty welcome to {0.mention}! **{1}** invited you to our humble abode 🏘.",
+"👋 Hello {0.mention}! **{1}** thought you'd like it here 😉.",
+"🌟 Welcome, {0.mention}! You have **{1}** to thank for this invite 👍.",
+"🚀 Greetings {0.mention}! **{1}** brought you into the fold 😄.",
+"🎉 Welcome {0.mention}! We're excited to have you 🤗. Invited by **{1}**.",
+"👋 Hey {0.mention}! **{1}** says hi and welcome! 👋",
+"✨ A friendly welcome to {0.mention}! Thanks to **{1}** for the invite 😊."
 ]
-
-# --- Global Variables ---
-invites_data = defaultdict(dict)  # {guild_id: {user_id: invite_count}}
-
-# --- Helper Functions ---
-async def send_with_rate_limit(destination, content=None, *, embed=None, file=None, view=None):
-    """Adds a message to the send queue."""
-    await bot.loop.create_task(send_message_with_rate_limit(destination, content, embed=embed, file=file, view=view))
-
-async def send_message_with_rate_limit(destination, content=None, *, embed=None, file=None, view=None):
-    """Sends a message with rate limit handling."""
-    try:
-        await destination.send(content=content, embed=embed, file=file, view=view)
-        await asyncio.sleep(0.5)  # Add a small delay
-    except discord.errors.HTTPException as e:
-        if e.status == 429:  # Too Many Requests
-            retry_after = e.retry_after
-            print(f"Rate limit hit! Retrying after {retry_after} seconds.")
-            await asyncio.sleep(retry_after)
-            await destination.send(content=content, embed=embed, file=file, view=view)  # Retry
-        else:
-            print(f"Error sending message: {e}")
-    except Exception as e:
-        print(f"Error sending message: {e}")
-
-# --- Event Handlers ---
+async def update_invite_cache():
+for guild in bot.guilds:
+try:
+invites = await guild.invites()
+invite_cache[guild.id] = {invite.code: invite for invite in invites}
+except discord.Forbidden:
+print(f"Bot does not have 'Manage Guild' permission in guild: {guild.name} ({guild.id})")
 @bot.event
 async def on_ready():
-    """Initialize invite cache and print bot status."""
-    print(f"{bot.user.name} is ready.")
-    for guild in bot.guilds:
-        await update_invite_cache(guild)  # Initial cache load
-
-async def update_invite_cache(guild):
-    """Updates the invite cache for a specific guild."""
-    try:
-        invites = await guild.invites()
-        invites_data[guild.id] = {
-            invite.code: {
-                "inviter_id": invite.inviter.id if invite.inviter else None,
-                "uses": invite.uses
-            }
-            for invite in invites
-        }
-    except discord.Forbidden:
-        print(f"Could not get invites for {guild.name}. Missing permissions.")
-        invites_data[guild.id] = {}  # Ensure guild has an entry, even if empty
-
+print(f'Logged in as {bot.user.name}')
+await update_invite_cache()
 @bot.event
 async def on_invite_create(invite):
-    """Update invite cache when a new invite is created."""
-    await update_invite_cache(invite.guild)
-
+await update_invite_cache()
 @bot.event
 async def on_invite_delete(invite):
-    """Update invite cache when an invite is deleted."""
-    await update_invite_cache(invite.guild)
-
+await update_invite_cache()
 @bot.event
 async def on_member_join(member):
-    """Determine inviter and send welcome message."""
-    guild = member.guild
-    welcome_channel = bot.get_channel(WELCOME_CHANNEL_ID)
-
-    if welcome_channel is None:
-        print("Welcome channel not found!")
-        return
-
-    try:
-        old_invites = invites_data[guild.id]
-        new_invites = await guild.invites()
-        inviter = None
-        
-        for new_invite in new_invites:
-            old_invite = old_invites.get(new_invite.code)
-            if old_invite:
-                if new_invite.uses > old_invite["uses"]:
-                    inviter = new_invite.inviter
-                    break
-            else: #handle new invites
-                inviter = new_invite.inviter
-                break
-
-        if inviter:
-            inviter_name = inviter.name
-            # Update invite count.
-            if inviter.id not in invites_data[guild.id]:
-                invites_data[guild.id][inviter.id] = 1
-            else:
-                invites_data[guild.id][inviter.id] += 1
-        else:
-            inviter_name = "Unknown"
-
-        # Update the cache.
-        invites_data[guild.id] = {
-            invite.code: {
-                "inviter_id": invite.inviter.id if invite.inviter else None,
-                "uses": invite.uses
-            }
-            for invite in new_invites
-        }
-
-        # Send welcome message
-        welcome_message = random.choice(WELCOME_MESSAGES).format(member=member, inviter_name=inviter_name)
-        await send_with_rate_limit(welcome_channel, welcome_message)
-
-    except Exception as e:
-        print(f"Error in on_member_join: {e}")
-
+guild = member.guild
+if guild.id not in invite_cache:
+await update_invite_cache()
+return
+try:
+new_invites = await guild.invites()
+used_invite = None
+for invite in new_invites:
+if invite.code in invite_cache[guild.id]:
+if invite.uses > invite_cache[guild.id][invite.code].uses:
+used_invite = invite
+break
+else:
+used_invite = invite # New invite was likely used
+if used_invite:
+inviter = used_invite.inviter
+if guild.id not in bot.invite_counts:
+bot.invite_counts[guild.id] = {}
+if inviter.id not in bot.invite_counts[guild.id]:
+bot.invite_counts[guild.id][inviter.id] = 0
+bot.invite_counts[guild.id][inviter.id] += 1
+welcome_channel = bot.get_channel(WELCOME_CHANNEL_ID)
+if welcome_channel:
+welcome_message = random.choice(welcome_messages).format(member,
+inviter.mention)
+await welcome_channel.send(welcome_message)
+await update_invite_cache()
+except discord.Forbidden:
+print(f"Bot does not have 'Manage Guild' permission to fetch invites in guild: {guild.name}
+({guild.id})")
+except Exception as e:
+print(f"An error occurred during member join: {e}")
 @bot.event
 async def on_member_remove(member):
-    """Remove invite counts for members who leave."""
-    guild = member.guild
-    try:
-        await update_invite_cache(guild) #re-cache invites to prevent errors.
-    except Exception as e:
-        print(f"Error in on_member_remove: {e}")
-
-# --- Commands ---
+guild = member.guild
+if guild.id in bot.invite_counts:
+for inviter_id, count in bot.invite_counts[guild.id].items():
+# Check if the leaving member was invited by this inviter
+# This is a simplified approach and might not be 100% accurate in all edge cases
+# A more robust solution would involve storing a mapping of invited members to their
+inviters
+try:
+async for entry in guild.audit_logs(limit=10, action=discord.AuditLogAction.kick):
+if entry.target == member and entry.user.id == inviter_id:
+bot.invite_counts[guild.id][inviter_id] -= 1
+if bot.invite_counts[guild.id][inviter_id] < 0:
+bot.invite_counts[guild.id][inviter_id] = 0
+return # Found a kick by this inviter, assuming they invited
+async for entry in guild.audit_logs(limit=10, action=discord.AuditLogAction.ban):
+if entry.target == member and entry.user.id == inviter_id:
+bot.invite_counts[guild.id][inviter_id] -= 1
+if bot.invite_counts[guild.id][inviter_id] < 0:
+bot.invite_counts[guild.id][inviter_id] = 0
+return # Found a ban by this inviter, assuming they invited
+except discord.Forbidden:
+print(f"Bot does not have 'View Audit Log' permission in guild: {guild.name}
+({guild.id})")
+except Exception as e:
+print(f"An error occurred while checking audit logs: {e}")
+# Fallback: If no direct kick/ban found, we can't reliably remove an invite.
+# A more accurate system would require storing who invited whom.
 @bot.command()
-async def invites(ctx, member: discord.Member = None):
-    """Displays the number of invites a member has."""
-    member = member or ctx.author
-    guild_id = ctx.guild.id
-    inviter_id = member.id
-    
-    invite_count = invites_data[guild_id].get(inviter_id, 0)
-    
-    embed = discord.Embed(
-        title="📨 Invite Stats",
-        description=f"{member.mention} has invited **{invite_count}** member(s).",
-        color=discord.Color.blue()
-    )
-    await ctx.send(embed=embed)
-
-class InviteBoard(discord.ui.View):
-    """View for displaying the invite leaderboard with pagination."""
-    def __init__(self, guild_id, page=0):
-        super().__init__(timeout=60)
-        self.guild_id = guild_id
-        self.page = page
-        self.data = invites_data[guild_id]
-        self.max_pages = (len(self.data) - 1) // 10 if self.data else 0
-
-    async def send_page(self, interaction: discord.Interaction):
-        """Sends a specific page of the leaderboard."""
-        self.data = invites_data[self.guild_id] #refresh data.
-        self.max_pages = (len(self.data) - 1) // 10 if self.data else 0
-
-        start = self.page * 10
-        end = start + 10
-        sorted_data = dict(sorted(self.data.items(), key=lambda item: item[1], reverse=True))
-        entries = list(sorted_data.items())[start:end]
-
-        embed = discord.Embed(
-            title="🏆 Top Inviters",
-            color=discord.Color.gold()
-        )
-        if not entries:
-            embed.description = "No invite data available."
-        else:
-            for i, (user_id, count) in enumerate(entries, start=start + 1):
-                member = interaction.guild.get_member(user_id)
-                name = member.mention if member else f"<@{user_id}>"
-                embed.add_field(name=f"#{i}", value=f"{name} — **{count} invites**", inline=False)
-
-        self.children[0].disabled = self.page == 0
-        self.children[1].disabled = self.page >= self.max_pages
-
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    @discord.ui.button(label="⏪ Prev", style=discord.ButtonStyle.blurple)
-    async def prev(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Go to the previous page."""
-        if self.page > 0:
-            self.page -= 1
-        await self.send_page(interaction)
-
-    @discord.ui.button(label="Next ⏩", style=discord.ButtonStyle.blurple)
-    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Go to the next page."""
-        if self.page < self.max_pages:
-            self.page += 1
-        await self.send_page(interaction)
-
+async def invite(ctx, member: discord.Member = None):
+"""Shows your invite count or the invite count of another member."""
+guild = ctx.guild
+if guild.id in bot.invite_counts:
+user_id = member.id if member else ctx.author.id
+user = member if member else ctx.author
+if user_id in bot.invite_counts[guild.id]:
+await ctx.send(f"**{user.display_name}** has **{bot.invite_counts[guild.id][user_id]}**
+invites.")
+else:
+await ctx.send(f"**{user.display_name}** has no recorded invites yet.")
+else:
+await ctx.send("Invite tracking has not started in this server yet.")
 @bot.command()
-async def invboard(ctx):
-    """Displays the invite leaderboard for the server."""
-    guild_id = ctx.guild.id
-    if not invites_data.get(guild_id):
-        await update_invite_cache(ctx.guild)
-
-    sorted_data = dict(sorted(invites_data[guild_id].items(), key=lambda x: x[1], reverse=True)[:20])
-    view = InviteBoard(guild_id)
-    await view.send_page(ctx) #send the first page
+async def invboard(ctx, page: int = 1):
+"""Shows the top 20 inviters (10 per page)."""
+guild = ctx.guild
+if guild.id in bot.invite_counts:
+sorted_inviters = sorted(bot.invite_counts[guild.id].items(), key=lambda item: item[1],
+reverse=True)
+total_inviters = len(sorted_inviters)
+start_index = (page - 1) * 10
+end_index = min(start_index + 10, total_inviters)
+if start_index >= total_inviters or page < 1:
+await ctx.send("Invalid page number.")
+return
+embed = discord.Embed(title=f"Top Inviters (Page {page})", color=discord.Color.blurple())
+for i in range(start_index, end_index):
+user_id, invite_count = sorted_inviters[i]
+user = bot.get_user(user_id)
+if user:
+embed.add_field(name=f"{i + 1}. {user.display_name}", value=f"{invite_count} invites",
+inline=False)
+await ctx.send(embed=embed)
+else:
+await ctx.send("Invite tracking has not started in this server yet.")
+bot.invite_counts = {} # Initialize invite counts dictionary
 @bot.command()
 async def apply(ctx):
     class AppDropdown(discord.ui.Select):
