@@ -566,6 +566,120 @@ async def on_member_join(member):
     except Exception as e:
         print(f"[Error in on_member_join] {e}")
 
+# List of user IDs who can give tokens
+AUTHORIZED_GIVERS = [123456789012345678, 987654321098765432]  # Replace with real IDs
+
+TOKEN_FILE = 'tokens.json'
+
+def load_tokens():
+    if not os.path.exists(TOKEN_FILE):
+        return {}
+    with open(TOKEN_FILE, 'r') as f:
+        return json.load(f)
+
+def save_tokens(data):
+    with open(TOKEN_FILE, 'w') as f:
+        json.dump(data, f, indent=4)
+
+def add_tokens(user_id, amount):
+    tokens = load_tokens()
+    user_id = str(user_id)
+    tokens[user_id] = tokens.get(user_id, 0) + amount
+    save_tokens(tokens)
+
+def subtract_tokens(user_id, amount):
+    tokens = load_tokens()
+    user_id = str(user_id)
+    if tokens.get(user_id, 0) >= amount:
+        tokens[user_id] -= amount
+        save_tokens(tokens)
+        return True
+    return False
+
+def get_balance(user_id):
+    tokens = load_tokens()
+    return tokens.get(str(user_id), 0)
+
+bot = commands.Bot(command_prefix='%', intents=discord.Intents.all())
+
+# Give tokens command
+@bot.command()
+async def give(ctx, member: discord.Member, amount: int):
+    if ctx.author.id not in AUTHORIZED_GIVERS:
+        return await ctx.send("❌ You are not authorized to give tokens.")
+    if amount <= 0:
+        return await ctx.send("❌ Please enter a positive amount.")
+    add_tokens(member.id, amount)
+    await ctx.send(f"✅ Gave {amount} VRT tokens to {member.display_name}.")
+
+# Check balance
+@bot.command()
+async def balance(ctx, member: discord.Member = None):
+    member = member or ctx.author
+    bal = get_balance(member.id)
+    await ctx.send(f"💰 {member.display_name} has {bal} VRT tokens.")
+
+# Example shop
+SHOP_ITEMS = {
+    "brawl pass": {
+        "price": 20000,
+        "role_name": "Brawl Pass"
+    },
+    "nitro 1 month": {
+        "price": 18000,
+        "role_name": "Nitro Winner"
+    },
+    "custom role with custom color": {
+        "price": 1500,
+        "role_name": "Custom Role"
+    },
+    "server updates/sneak peeks": {
+        "price": 1000,
+        "role_name": "Sneak Peek Access"
+    }
+}
+
+
+@bot.command()
+async def shop(ctx):
+    embed = discord.Embed(title="🛒 VRT Token Shop", color=discord.Color.gold())
+    for item, data in SHOP_ITEMS.items():
+        embed.add_field(name=item.title(), value=f"{data['price']} VRT tokens", inline=False)
+    await ctx.send(embed=embed)
+
+
+# REMOVE tokens (authorized only)
+@bot.command()
+async def remove(ctx, member: discord.Member, amount: int):
+    if ctx.author.id not in AUTHORIZED_GIVERS:
+        return await ctx.send("❌ You are not authorized to remove tokens.")
+    if amount <= 0:
+        return await ctx.send("❌ Please enter a positive amount.")
+    if subtract_tokens(member.id, amount):
+        await ctx.send(f"❌ Removed {amount} VRT tokens from {member.display_name}.")
+    else:
+        await ctx.send("⚠️ User doesn't have enough tokens to remove.")
+
+# BUY command with role assignment
+@bot.command()
+async def buy(ctx, *, item_name: str):
+    item_name = item_name.lower()
+    if item_name not in SHOP_ITEMS:
+        return await ctx.send("❌ That item doesn't exist in the shop.")
+
+    item = SHOP_ITEMS[item_name]
+    price = item['price']
+    role_name = item['role_name']
+
+    if subtract_tokens(ctx.author.id, price):
+        role = discord.utils.get(ctx.guild.roles, name=role_name)
+        if not role:
+            role = await ctx.guild.create_role(name=role_name)
+        await ctx.author.add_roles(role)
+        await ctx.send(f"✅ You bought **{item_name}** for {price} VRT tokens and received the **{role_name}** role!")
+    else:
+        await ctx.send("❌ You don't have enough VRT tokens.")
+
 
 # Run bot
 bot.run(os.getenv('TOKEN'))
