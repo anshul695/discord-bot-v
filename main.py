@@ -697,5 +697,48 @@ async def apply(ctx):
 
     await ctx.send(embed=embed, view=AppDropdownView())
 
+@bot.event
+async def on_message(message):
+    # Ignore bots and allowed roles
+    if message.author.bot:
+        return
+    
+    allowed_roles = ["Board of Directors", "Associate Directors"]  # Change to your role names
+    if any(role.name in allowed_roles for role in message.author.roles):
+        await bot.process_commands(message)
+        return
+    
+    # Check for Discord invites
+    if "discord.gg/" in message.content.lower() or "discord.com/invite/" in message.content.lower():
+        try:
+            await message.delete()
+        except:
+            pass  # If we can't delete, just continue
+            
+        # Create warning embed
+        embed = discord.Embed(
+            title="⚠️ Discord Invites Not Allowed",
+            description=f"{message.author.mention} No Discord invite links are permitted here!",
+            color=0xFF0000  # Red color for warning
+        )
+        embed.add_field(
+            name="Rule Violation",
+            value="Posting invite links is against server rules",
+            inline=False
+        )
+        
+        # Send to both channel and user
+        warning = await message.channel.send(embed=embed)
+        try:
+            await message.author.send(embed=embed)
+        except:
+            pass  # Couldn't DM user
+        
+        # Delete warning after 10 seconds
+        await asyncio.sleep(10)
+        await warning.delete()
+    
+    await bot.process_commands(message)
+
 # Run bot
 bot.run(os.getenv('TOKEN'))
