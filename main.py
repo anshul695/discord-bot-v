@@ -483,30 +483,33 @@ async def apply(ctx):
 
     await ctx.send(embed=embed, view=AppDropdownView())
 
+
 invite_cache = {}
-WELCOME_CHANNEL_ID = 1363797902291374110  # Replace with your welcome channel ID
+bot.invite_counts = defaultdict(lambda: defaultdict(int))  # guild_id -> {user_id: count}
+
+WELCOME_CHANNEL_ID = 1363797902291374110  # Change this to your channel ID
 
 welcome_messages = [
-    "👋 Hey {0.mention}! Welcome to the server 🎉. You were invited by **{1}** 🍀.",
-    "🚀 Greetings {0.mention}! Glad you're here ✨. **{1}** brought you aboard!",
-    "🌟 A wild {0.mention} appeared! Thanks to **{1}** for the summon 🧙‍♂️.",
-    "🎉 Welcome aboard, {0.mention}! **{1}** sent you on this quest ⚔️.",
-    "👋 Hello {0.mention}! Make yourself at home 🏡 (Thanks to **{1}**).",
-    "✨ Cheers {0.mention}, and shoutout to **{1}** for the invite 🥂.",
-    "🕹️ Level 1 {0.mention} joined. XP granted to **{1}** 🎮.",
-    "🚨 Breaking news! {0.mention} is here, thanks to **{1}** 📰.",
-    "🐉 {0.mention} has entered the chat! Dragon tamer: **{1}** 🐲",
-    "💎 Shine bright like {0.mention}, invited by **{1}** 💫",
-    "🥳 Woohoo! {0.mention} has arrived. Good call, **{1}** 🙌.",
-    "🌈 Look who joined us! {0.mention} (props to **{1}**) 🌟",
-    "📢 Sound the horns! {0.mention} is here 🎺 Invited by **{1}**.",
-    "🧠 Big brain move by **{1}** bringing in {0.mention} 🧠",
-    "🍕 Welcome {0.mention}! **{1}** promised free pizza. Just kidding 🍕😂",
-    "🎊 The party just got cooler with {0.mention}. Thanks **{1}** 🪩",
-    "💬 Welcome {0.mention}! We all blame **{1}** if you don’t like it here 😂",
-    "🧙‍♂️ Magic portal opened by **{1}**, and out came {0.mention} 🪄",
-    "🕵️ {0.mention} snuck in, escorted by **{1}** 🔍",
-    "🎇 Cheers {0.mention}, and salute to **{1}** for the perfect invite 🎆"
+    "👋 Hey {0.mention}! You were invited by **{1}** 🎉. Welcome aboard!",
+    "🚀 Sup {0.mention}! **{1}** brought you here. Let's roll! 😎",
+    "🎉 {0.mention} joined us, thanks to **{1}**! Welcome to the chaos 😈",
+    "🌟 Look who's here – {0.mention}! Big thanks to **{1}** for the invite!",
+    "🤝 {0.mention} joined! Give **{1}** a cookie 🍪 for the invite.",
+    "🎈 Yay! {0.mention} is here. Invited by the awesome **{1}**!",
+    "✨ {0.mention} just landed! Thanks, **{1}**, you're amazing!",
+    "💥 Welcome {0.mention}! **{1}** thinks you're a good fit 😁",
+    "🎯 {0.mention} was recruited by **{1}**. Let the fun begin!",
+    "📣 {0.mention} is here! Courtesy of **{1}**'s invite skills!",
+    "👀 {0.mention} appeared! Looks like **{1}** summoned you 😄",
+    "📬 {0.mention} accepted **{1}**'s invite! Time to party 🎊",
+    "🏆 {0.mention} joins the crew! High five to **{1}** ✋",
+    "🌐 Welcome {0.mention}! Credit goes to **{1}** for the invite!",
+    "🔔 Ding dong! {0.mention} arrived via **{1}**'s invite 🛎️",
+    "🎶 {0.mention} is in the house! Thanks to **{1}** 💃",
+    "🌈 {0.mention} joined – blame **{1}** if things get wild 😜",
+    "🕶️ {0.mention} pulled up. **{1}** knew you'd love it here.",
+    "💎 New gem alert: {0.mention} – invited by **{1}**!",
+    "🔥 {0.mention} is on fire already. Nice pull by **{1}**!"
 ]
 
 async def update_invite_cache():
@@ -515,12 +518,16 @@ async def update_invite_cache():
             invites = await guild.invites()
             invite_cache[guild.id] = {invite.code: invite for invite in invites}
         except discord.Forbidden:
-            print(f"Missing 'Manage Server' permission in {guild.name}")
+            print(f"[WARN] Missing 'Manage Guild' permission in: {guild.name}")
+        except Exception as e:
+            print(f"[ERROR] Updating invite cache: {e}")
+
 
 @bot.event
 async def on_ready():
-    print(f"{bot.user.name} is online!")
+    print(f"{bot.user} is online.")
     await update_invite_cache()
+
 
 @bot.event
 async def on_invite_create(invite):
