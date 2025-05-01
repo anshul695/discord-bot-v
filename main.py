@@ -5,7 +5,8 @@ import asyncio
 from datetime import timedelta
 from keep_alive import keep_alive  # Assuming keep_alive.py is in the same directory
 import random  # Import the random module
-
+import json 
+from collections import defaultdict
 
 keep_alive()
 
