@@ -660,16 +660,11 @@ async def apply(ctx):
     class AppDropdown(discord.ui.Select):
         def __init__(self):
             options = [
-                discord.SelectOption(label="Tournament Staff", description="Apply as a Tournament Staff"),
-                discord.SelectOption(label="Esports Staff", description="Apply as an Esports Staff"),
-                discord.SelectOption(label="Clubs Manager", description="Apply as a Clubs Manager"),
-                discord.SelectOption(label="Server Moderation", description="Apply for Moderation role"),
-                discord.SelectOption(label="Collab application", description="Apply for a Collaboration/Sponsorship")
-            ]
+                discord.SelectOption(label="Apply Now", description="Apply if you're interested or seeking collab"), ]
             super().__init__(placeholder="Choose Application Type", min_values=1, max_values=1, options=options)
 
         async def callback(self, interaction: discord.Interaction):
-            form_url = "https://alphaenforcers.blogspot.com/p/apply-to-be-part-of-our-management.html"
+            form_url = "https://forms.gle/6z4uwojbPhxwqYqn8"
 
             try:
                 await interaction.user.send(
