@@ -22,7 +22,7 @@ bot.invite_counts = defaultdict(lambda: defaultdict(int))  # guild_id -> {user_i
 invite_cache = {}
 
 # Token system
-AUTHORIZED_GIVERS = [123456789012345678, 987654321098765432]  # Replace with real IDs
+AUTHORIZED_GIVERS = [1327923421442736180, 1097776051393929227, 904290766225027083]  # Replace with real IDs
 TOKEN_FILE = 'tokens.json'
 WELCOME_CHANNEL_ID = 1363797902291374110  # Change this to your channel ID
 
@@ -429,7 +429,7 @@ async def serverinfo(ctx):
     guild = ctx.guild
     
     # Replace these with your actual founders' user IDs
-    FOUNDER_IDS = [123456789012345678, 987654321098765432, 567890123456789012]
+    FOUNDER_IDS = [1327923421442736180, 1097776051393929227, 904290766225027083]
     
     # Get founder members
     founders = []
