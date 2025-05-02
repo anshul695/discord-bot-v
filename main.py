@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands, tasks
 import os
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 from keep_alive import keep_alive
 import random
 import json
@@ -16,15 +16,18 @@ bot = commands.Bot(command_prefix="%", intents=intents, help_command=None)
 
 # Dictionaries
 afk_users = {}
+afk_data = {}  # {user_id: {"time": datetime, "mentions": int, "reason": str}}
 warns = {}
 bot.invites = {}
-bot.invite_counts = defaultdict(lambda: defaultdict(int))  # guild_id -> {user_id: count}
+bot.invite_counts = defaultdict(lambda: defaultdict(int))
 invite_cache = {}
+invite_data = {}  # {guild_id: {invite_code: {uses: int, inviter: user_id}}}
+invite_leaderboard = {}  # {guild_id: {user_id: invite_count}}
 
 # Token system
-AUTHORIZED_GIVERS = [1327923421442736180, 1097776051393929227, 904290766225027083]  # Replace with real IDs
+AUTHORIZED_GIVERS = [1327923421442736180, 1097776051393929227, 904290766225027083]
 TOKEN_FILE = 'tokens.json'
-WELCOME_CHANNEL_ID = 1363797902291374110  # Change this to your channel ID
+WELCOME_CHANNEL_ID = 1363797902291374110
 
 # Rate limit settings
 MESSAGE_QUEUE_MAX_SIZE = 5
@@ -34,74 +37,42 @@ is_processing_queue = False
 
 # Shop items
 SHOP_ITEMS = {
-    "brawl pass": {
-        "price": 20000,
-        "role_name": "Brawl Pass"
-    },
-    "nitro 1 month": {
-        "price": 18000,
-        "role_name": "Nitro Winner"
-    },
-    "custom role with custom color": {
-        "price": 1500,
-        "role_name": "Custom Role"
-    },
-    "server updates/sneak peeks": {
-        "price": 1000,
-        "role_name": "Sneak Peek Access"
-    }
+    "brawl pass": {"price": 20000, "role_name": "Brawl Pass"},
+    "nitro 1 month": {"price": 18000, "role_name": "Nitro Winner"},
+    "custom role with custom color": {"price": 1500, "role_name": "Custom Role"},
+    "server updates/sneak peeks": {"price": 1000, "role_name": "Sneak Peek Access"}
 }
 
 welcome_messages = [
-    "👋 Hey {0.mention}! You were invited by **{1}** 🎉. Welcome aboard!",
-    "🚀 Sup {0.mention}! **{1}** brought you here. Let's roll! 😎",
-    "🎉 {0.mention} joined us, thanks to **{1}**! Welcome to the chaos 😈",
-    "🌟 Look who's here – {0.mention}! Big thanks to **{1}** for the invite!",
-    "🤝 {0.mention} joined! Give **{1}** a cookie 🍪 for the invite.",
-    "🎈 Yay! {0.mention} is here. Invited by the awesome **{1}**!",
-    "✨ {0.mention} just landed! Thanks, **{1}**, you're amazing!",
-    "💥 Welcome {0.mention}! **{1}** thinks you're a good fit 😁",
-    "🎯 {0.mention} was recruited by **{1}**. Let the fun begin!",
-    "📣 {0.mention} is here! Courtesy of **{1}**'s invite skills!",
-    "👀 {0.mention} appeared! Looks like **{1}** summoned you 😄",
-    "📬 {0.mention} accepted **{1}**'s invite! Time to party 🎊",
-    "🏆 {0.mention} joins the crew! High five to **{1}** ✋",
-    "🌐 Welcome {0.mention}! Credit goes to **{1}** for the invite!",
-    "🔔 Ding dong! {0.mention} arrived via **{1}**'s invite 🛎️",
-    "🎶 {0.mention} is in the house! Thanks to **{1}** 💃",
-    "🌈 {0.mention} joined – blame **{1}** if things get wild 😜",
-    "🕶️ {0.mention} pulled up. **{1}** knew you'd love it here.",
-    "💎 New gem alert: {0.mention} – invited by **{1}**!",
-    "🔥 {0.mention} is on fire already. Nice pull by **{1}**!"
+    "👋 {0.mention} joined! Invited by **{1}** 🎉",
+    "🚀 {0.mention} has arrived! Thanks to **{1}** 😎",
+    "🎉 Welcome {0.mention}! Recruited by **{1}**",
+    "🌟 {0.mention} is here! Shoutout to **{1}**",
+    "🤝 {0.mention} joined via **{1}**'s invite"
 ]
 
 # Utility functions
-def make_embed(title, description, color=discord.Color.blue()):
-    """Creates a standard embed."""
-    return discord.Embed(title=title, description=description, color=color)
+def make_embed(title=None, description=None, color=discord.Color.blue()):
+    embed = discord.Embed(title=title, description=description, color=color)
+    embed.set_footer(text="Anshhhulll's Bot", icon_url="https://i.imgur.com/8Km9TLL.png")
+    return embed
 
 def make_mod_embed(title, ctx, member, reason=None, duration=None):
-    """Creates an embed for moderation actions."""
     embed = discord.Embed(title=title, color=discord.Color.orange())
     embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
     embed.add_field(name="Member", value=member.mention, inline=False)
-    if reason:
-        embed.add_field(name="Reason", value=reason, inline=False)
-    if duration:
-        embed.add_field(name="Duration", value=f"{duration} seconds", inline=False)
+    if reason: embed.add_field(name="Reason", value=reason, inline=False)
+    if duration: embed.add_field(name="Duration", value=f"{duration} seconds", inline=False)
     return embed
 
 async def send_with_rate_limit(destination, content=None, *, embed=None, file=None, view=None):
-    """Adds a message to the send queue."""
     await message_queue.put((destination, content, embed, file, view))
     await process_message_queue()
 
 async def process_message_queue():
-    """Processes the message queue with rate limiting."""
     global is_processing_queue
     if is_processing_queue or message_queue.empty():
         return
-
     is_processing_queue = True
     while not message_queue.empty():
         destination, content, embed, file, view = await message_queue.get()
@@ -109,15 +80,11 @@ async def process_message_queue():
             await destination.send(content=content, embed=embed, file=file, view=view)
             await asyncio.sleep(MESSAGE_SEND_INTERVAL)
         except discord.errors.HTTPException as e:
-            if e.status == 429:  # Too Many Requests
-                retry_after = e.retry_after
-                print(f"⚠️ Rate limit hit! Retrying after {retry_after} seconds.")
-                await asyncio.sleep(retry_after)
+            if e.status == 429:
+                await asyncio.sleep(e.retry_after)
                 await message_queue.put((destination, content, embed, file, view))
-            else:
-                print(f"❌ Error sending message: {e}")
         except Exception as e:
-            print(f"❌ Error during message queue processing: {e}")
+            print(f"Error sending message: {e}")
         finally:
             message_queue.task_done()
     is_processing_queue = False
@@ -152,16 +119,20 @@ def get_balance(user_id):
     tokens = load_tokens()
     return tokens.get(str(user_id), 0)
 
-# Invite tracking functions
+# Invite tracking
 async def update_invite_cache():
     for guild in bot.guilds:
         try:
             invites = await guild.invites()
             invite_cache[guild.id] = {invite.code: invite for invite in invites}
-        except discord.Forbidden:
-            print(f"[WARN] Missing 'Manage Guild' permission in: {guild.name}")
+            for invite in invites:
+                if invite.inviter:
+                    invite_data.setdefault(guild.id, {})[invite.code] = {
+                        "uses": invite.uses,
+                        "inviter": invite.inviter.id
+                    }
         except Exception as e:
-            print(f"[ERROR] Updating invite cache: {e}")
+            print(f"Error updating invites: {e}")
 
 # Events
 @bot.event
@@ -201,471 +172,299 @@ async def on_member_join(member):
         channel = guild.get_channel(WELCOME_CHANNEL_ID)
         if channel:
             welcome_msg = random.choice(welcome_messages).format(member, inviter)
-            await channel.send(welcome_msg)
+            embed = make_embed(description=welcome_msg, color=0x00ff00)
+            await channel.send(embed=embed)
+            
+            # Update leaderboard
+            if used_invite and used_invite.inviter:
+                inviter_id = used_invite.inviter.id
+                invite_leaderboard.setdefault(guild.id, {})[inviter_id] = invite_leaderboard.get(guild.id, {}).get(inviter_id, 0) + 1
 
         await update_invite_cache()
     except Exception as e:
-        print(f"[Error in on_member_join] {e}")
+        print(f"Error in member join: {e}")
 
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    # Auto remove AFK status
-    if message.author.id in afk_users:
-        del afk_users[message.author.id]
-        embed = make_embed("🎉 Welcome Back!",
-                         f"{message.author.mention}, welcome back! Your AFK status was removed.",
-                         discord.Color.green())
-        await send_with_rate_limit(message.channel, embed=embed)
-
-    # Notify if pinging AFK users
+    # Track AFK mentions
     for mention in message.mentions:
-        if mention.id in afk_users:
-            embed = make_embed("📨 User is AFK",
-                             f"{mention.display_name} is AFK: {afk_users[mention.id]}",
-                             discord.Color.yellow())
-            await send_with_rate_limit(message.channel, embed=embed)
+        if mention.id in afk_users and mention.id != message.author.id:
+            if mention.id in afk_data:
+                afk_data[mention.id]["mentions"] += 1
+            await send_with_rate_limit(
+                message.channel,
+                embed=make_embed(
+                    "📨 User is AFK",
+                    f"{mention.display_name} is AFK: {afk_users[mention.id]}",
+                    discord.Color.yellow()
+                )
+            )
+
+    # Welcome back from AFK
+    if message.author.id in afk_users:
+        afk_info = afk_data.pop(message.author.id, {})
+        duration = (datetime.utcnow() - afk_info.get("time", datetime.utcnow())).total_seconds()
+        mentions = afk_info.get("mentions", 0)
+        
+        embed = make_embed(
+            "🎉 Welcome Back!",
+            f"{message.author.mention} is no longer AFK!\n"
+            f"⏱️ You were AFK for {duration//60:.0f} minutes\n"
+            f"📨 You received {mentions} mentions",
+            discord.Color.green()
+        )
+        await send_with_rate_limit(message.channel, embed=embed)
+        del afk_users[message.author.id]
+
+    # Block invites
+    allowed_roles = ["Board of Directors", "Associate Directors"]
+    if not any(role.name in allowed_roles for role in message.author.roles):
+        if "discord.gg/" in message.content.lower() or "discord.com/invite/" in message.content.lower():
+            try:
+                await message.delete()
+                embed = make_embed(
+                    "⚠️ Discord Invites Not Allowed",
+                    f"{message.author.mention} No invite links permitted!",
+                    0xFF0000
+                )
+                warning = await message.channel.send(embed=embed)
+                await asyncio.sleep(10)
+                await warning.delete()
+            except:
+                pass
 
     await bot.process_commands(message)
 
 #################################
 # --- MODERATION COMMANDS --- #
 #################################
-@bot.command()
-@commands.has_permissions(moderate_members=True)
-async def timeout(ctx, member: discord.Member = None, duration: int = None, *, reason: str = None):
-    if not member or not duration or not reason:
-        embed = make_embed("⚠️ Timeout Usage", "%timeout @user seconds reason", discord.Color.yellow())
-        await send_with_rate_limit(ctx, embed=embed)
-        return
-    try:
-        await member.timeout(timedelta(seconds=duration), reason=reason)
-        await send_with_rate_limit(ctx, embed=make_mod_embed("⏳ Timeout Issued", ctx, member, reason, duration))
-    except discord.Forbidden:
-        embed = make_embed("❌ Permission Denied", "I don't have permission to timeout this user.", discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-    except Exception as e:
-        embed = make_embed("❌ Error", f"An error occurred: {e}", discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-
-@bot.command()
-@commands.has_permissions(ban_members=True)
-async def ban(ctx, member: discord.Member = None, *, reason: str = None):
-    if not member or not reason:
-        embed = make_embed("⚠️ Ban Usage", "%ban @user reason", discord.Color.yellow())
-        await send_with_rate_limit(ctx, embed=embed)
-        return
-    try:
-        await member.ban(reason=reason)
-        await send_with_rate_limit(ctx, embed=make_mod_embed("🔨 User Banned", ctx, member, reason))
-    except discord.Forbidden:
-        embed = make_embed("❌ Permission Denied", "I don't have permission to ban this user.", discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-    except Exception as e:
-        embed = make_embed("❌ Error", f"An error occurred: {e}", discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
 
 @bot.command()
 @commands.has_permissions(kick_members=True)
-async def kick(ctx, member: discord.Member = None, *, reason: str = None):
-    if not member or not reason:
-        embed = make_embed("⚠️ Kick Usage", "%kick @user reason", discord.Color.yellow())
-        await send_with_rate_limit(ctx, embed=embed)
-        return
-    try:
-        await member.kick(reason=reason)
-        await send_with_rate_limit(ctx, embed=make_mod_embed("👢 User Kicked", ctx, member, reason))
-    except discord.Forbidden:
-        embed = make_embed("❌ Permission Denied", "I don't have permission to kick this user.", discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-    except Exception as e:
-        embed = make_embed("❌ Error", f"An error occurred: {e}", discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-
-@bot.command()
-@commands.has_permissions(manage_roles=True)
-async def mute(ctx, member: discord.Member = None, *, reason: str = None):
-    if not member or not reason:
-        embed = make_embed("⚠️ Mute Usage", "%mute @user reason", discord.Color.yellow())
-        await send_with_rate_limit(ctx, embed=embed)
-        return
-
-    mute_role = discord.utils.get(ctx.guild.roles, name="Muted")
-    if not mute_role:
-        try:
-            mute_role = await ctx.guild.create_role(name="Muted")
-            for channel in ctx.guild.channels:
-                await channel.set_permissions(mute_role, send_messages=False, speak=False, connect=False)
-            embed = make_embed("✅ Muted Role Created",
-                             "Created the 'Muted' role and set channel permissions.",
-                             discord.Color.green())
-            await send_with_rate_limit(ctx, embed=embed)
-        except discord.Forbidden:
-            embed = make_embed("❌ Permission Denied",
-                             "I don't have permission to create the 'Muted' role.",
-                             discord.Color.red())
-            await send_with_rate_limit(ctx, embed=embed)
-            return
-
-    try:
-        await member.add_roles(mute_role, reason=reason)
-        await send_with_rate_limit(ctx, embed=make_mod_embed("🔇 User Muted", ctx, member, reason))
-    except discord.Forbidden:
-        embed = make_embed("❌ Permission Denied",
-                         "I don't have permission to manage roles for this user.",
-                         discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-    except Exception as e:
-        embed = make_embed("❌ Error", f"An error occurred: {e}", discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-
-@bot.command()
-@commands.has_permissions(manage_roles=True)
-async def unmute(ctx, member: discord.Member = None):
-    if not member:
-        embed = make_embed("⚠️ Unmute Usage", "Mention a user to unmute.", discord.Color.yellow())
-        await send_with_rate_limit(ctx, embed=embed)
-        return
-
-    mute_role = discord.utils.get(ctx.guild.roles, name="Muted")
-    if not mute_role or mute_role not in member.roles:
-        embed = make_embed("⚠️ Not Muted", "User is not muted.", discord.Color.yellow())
-        await send_with_rate_limit(ctx, embed=embed)
-        return
-
-    try:
-        await member.remove_roles(mute_role)
-        embed = make_embed("🔊 User Unmuted", f"{member.mention} has been unmuted.",
-                         discord.Color.green())
-        await send_with_rate_limit(ctx, embed=embed)
-    except discord.Forbidden:
-        embed = make_embed("❌ Permission Denied",
-                         "I don't have permission to manage roles for this user.",
-                         discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-    except Exception as e:
-        embed = make_embed("❌ Error", f"An error occurred: {e}", discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-
-@bot.command()
-@commands.has_permissions(kick_members=True)
-async def warn(ctx, member: discord.Member = None, *, reason: str = None):
-    if not member or not reason:
-        embed = make_embed("⚠️ Warn Usage", "%warn @user reason", discord.Color.yellow())
-        await send_with_rate_limit(ctx, embed=embed)
-        return
-
+async def warn(ctx, member: discord.Member, *, reason: str):
     warns.setdefault(member.id, []).append(reason)
-    await send_with_rate_limit(ctx, embed=make_mod_embed("⚠️ User Warned", ctx, member, reason))
+    await send_with_rate_limit(
+        ctx,
+        embed=make_mod_embed("⚠️ User Warned", ctx, member, reason)
+    )
+
+@bot.command()
+@commands.has_permissions(kick_members=True)
+async def warnings(ctx, member: discord.Member):
+    user_warns = warns.get(member.id, [])
+    embed = make_embed(
+        f"Warnings for {member.display_name}",
+        "\n".join(f"{i+1}. {warn}" for i, warn in enumerate(user_warns)) or "No warnings",
+        0xFFA500
+    )
+    await ctx.send(embed=embed)
+
+@bot.command()
+@commands.has_permissions(kick_members=True)
+async def clearwarns(ctx, member: discord.Member):
+    if member.id in warns:
+        del warns[member.id]
+    await ctx.send(embed=make_embed(
+        "✅ Warnings Cleared",
+        f"Cleared all warnings for {member.mention}",
+        0x00FF00
+    ))
+
+@bot.command()
+@commands.has_permissions(kick_members=True)
+async def kick(ctx, member: discord.Member, *, reason: str):
+    await member.kick(reason=reason)
+    await send_with_rate_limit(
+        ctx,
+        embed=make_mod_embed("👢 User Kicked", ctx, member, reason)
+    )
 
 @bot.command()
 @commands.has_permissions(ban_members=True)
-async def softban(ctx, member: discord.Member = None, *, reason: str = None):
-    if not member or not reason:
-        embed = make_embed("⚠️ Softban Usage", "%softban @user reason", discord.Color.yellow())
-        await send_with_rate_limit(ctx, embed=embed)
-        return
+async def ban(ctx, member: discord.Member, *, reason: str):
+    await member.ban(reason=reason)
+    await send_with_rate_limit(
+        ctx,
+        embed=make_mod_embed("🔨 User Banned", ctx, member, reason)
+    )
 
-    try:
-        await member.ban(reason=reason, delete_message_days=1)
-        await asyncio.sleep(1)
-        await ctx.guild.unban(discord.Object(id=member.id))
-        await send_with_rate_limit(ctx, embed=make_mod_embed("🧹 Softban Executed", ctx, member, reason))
-    except discord.Forbidden:
-        embed = make_embed("❌ Permission Denied",
-                         "I don't have permission to ban/unban this user.",
-                         discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-    except Exception as e:
-        embed = make_embed("❌ Error", f"An error occurred: {e}", discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
+@bot.command()
+@commands.has_permissions(ban_members=True)
+async def unban(ctx, user_id: int):
+    user = await bot.fetch_user(user_id)
+    await ctx.guild.unban(user)
+    await ctx.send(embed=make_embed(
+        "🔓 User Unbanned",
+        f"{user.name} has been unbanned",
+        0x00FF00
+    ))
+
+@bot.command()
+@commands.has_permissions(manage_roles=True)
+async def mute(ctx, member: discord.Member, *, reason: str):
+    mute_role = discord.utils.get(ctx.guild.roles, name="Muted") or \
+               await ctx.guild.create_role(name="Muted")
+    
+    for channel in ctx.guild.channels:
+        await channel.set_permissions(mute_role, send_messages=False, speak=False)
+    
+    await member.add_roles(mute_role, reason=reason)
+    await send_with_rate_limit(
+        ctx,
+        embed=make_mod_embed("🔇 User Muted", ctx, member, reason)
+    )
+
+@bot.command()
+@commands.has_permissions(manage_roles=True)
+async def unmute(ctx, member: discord.Member):
+    mute_role = discord.utils.get(ctx.guild.roles, name="Muted")
+    if mute_role in member.roles:
+        await member.remove_roles(mute_role)
+    await ctx.send(embed=make_embed(
+        "🔊 User Unmuted",
+        f"{member.mention} can now speak again",
+        0x00FF00
+    ))
 
 @bot.command()
 @commands.has_permissions(manage_messages=True)
-async def purge(ctx, amount: int = None):
-    if amount is None or amount < 1:
-        embed = make_embed("⚠️ Purge Usage", "%purge <amount>", discord.Color.yellow())
-        await send_with_rate_limit(ctx, embed=embed)
-        return
-    try:
-        deleted = await ctx.channel.purge(limit=amount + 1)
-        embed = make_embed("✅ Messages Cleared",
-                         f"Successfully cleared {len(deleted) - 1} messages.",
-                         discord.Color.green())
-        await send_with_rate_limit(ctx, embed=embed, delete_after=5)
-    except discord.Forbidden:
-        embed = make_embed("❌ Permission Denied",
-                         "I don't have permission to manage messages in this channel.",
-                         discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-    except Exception as e:
-        embed = make_embed("❌ Error", f"An error occurred: {e}", discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
+async def purge(ctx, amount: int = 10):
+    await ctx.channel.purge(limit=amount + 1)
+    msg = await ctx.send(embed=make_embed(
+        "🧹 Messages Purged",
+        f"Deleted {amount} messages",
+        0x00FF00
+    ))
+    await asyncio.sleep(3)
+    await msg.delete()
 
-#####################################
-# --- BASIC/INFO COMMANDS --- #
-#####################################
-@bot.command()
-async def afk(ctx, *, reason="AFK"):
-    afk_users[ctx.author.id] = reason
-    embed = make_embed("🛌 AFK Activated", f"{ctx.author.mention} is now AFK: {reason}",
-                      discord.Color.blurple())
-    await send_with_rate_limit(ctx, embed=embed)
+#################################
+# --- INVITE COMMANDS --- #
+#################################
 
 @bot.command()
-async def userinfo(ctx, member: discord.Member = None):
+async def invites(ctx, member: discord.Member = None):
     member = member or ctx.author
-    embed = discord.Embed(title=f"{member}'s Info", color=discord.Color.blue())
-    embed.add_field(name="ID", value=member.id)
-    embed.add_field(name="Joined", value=member.joined_at.strftime("%b %d, %Y"))
-    embed.add_field(name="Account Created", value=member.created_at.strftime("%b %d, %Y"))
-    embed.set_thumbnail(url=member.display_avatar.url if member.display_avatar else None)
-    await send_with_rate_limit(ctx, embed=embed)
+    count = invite_leaderboard.get(ctx.guild.id, {}).get(member.id, 0)
+    embed = make_embed(
+        "📊 Invite Stats",
+        f"{member.mention} has invited **{count}** members",
+        0x00ff00
+    )
+    await ctx.send(embed=embed)
 
 @bot.command()
-async def serverinfo(ctx):
-    guild = ctx.guild
+async def invitelb(ctx, limit: int = 10):
+    guild_data = invite_leaderboard.get(ctx.guild.id, {})
+    if not guild_data:
+        return await ctx.send(embed=make_embed("No invite data available yet!", color=0xFF0000))
     
-    # Replace these with your actual founders' user IDs
-    FOUNDER_IDS = [1327923421442736180, 1097776051393929227, 904290766225027083]
+    sorted_lb = sorted(guild_data.items(), key=lambda x: x[1], reverse=True)[:limit]
     
-    # Get founder members
-    founders = []
-    for user_id in FOUNDER_IDS:
-        founder = guild.get_member(user_id)
-        if founder:
-            founders.append(founder.mention)
-    
-    # Format creation date
-    created_at = guild.created_at.strftime("%B %d, %Y")
-    days_since_creation = (ctx.message.created_at - guild.created_at).days
-    
-    embed = discord.Embed(
-        title=f"🏰 {guild.name} Server Information",
-        color=discord.Color.green()
-    )
-    
-    # Server Basics
-    embed.add_field(
-        name="📅 Created On",
-        value=f"{created_at} ({days_since_creation} days ago)",
-        inline=False
-    )
-    
-    # Members
-    embed.add_field(
-        name="👥 Members",
-        value=guild.member_count,
-        inline=True
-    )
-    
-    # Channels
-    text_channels = len(guild.text_channels)
-    voice_channels = len(guild.voice_channels)
-    embed.add_field(
-        name="📚 Channels",
-        value=f"{text_channels + voice_channels} total\n({text_channels} text, {voice_channels} voice)",
-        inline=True
-    )
-    
-    # Roles
-    embed.add_field(
-        name="🎭 Roles",
-        value=len(guild.roles),
-        inline=True
-    )
-    
-    # Boost Status
-    if guild.premium_tier > 0:
-        embed.add_field(
-            name="🚀 Boost Level",
-            value=f"Level {guild.premium_tier}\n{guild.premium_subscription_count} boosts",
-            inline=True
-        )
-    
-    # Founders Section
-    if founders:
-        embed.add_field(
-            name="👑 Founders",
-            value="\n".join(founders),
-            inline=False
-        )
-    
-    # Server Icon
-    if guild.icon:
-        embed.set_thumbnail(url=guild.icon.url)
+    embed = make_embed("🏆 Invite Leaderboard", color=0xffd700)
+    for i, (user_id, count) in enumerate(sorted_lb, 1):
+        member = ctx.guild.get_member(user_id)
+        if member:
+            embed.add_field(
+                name=f"{i}. {member.display_name}",
+                value=f"**{count}** invites",
+                inline=False
+            )
     
     await ctx.send(embed=embed)
-#################################
-# --- ROLE & CHANNEL COMMANDS --- #
-#################################
-@bot.command()
-@commands.has_permissions(manage_channels=True)
-async def lock(ctx):
-    try:
-        await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=False)
-        embed = make_embed("🔒 Channel Locked",
-                         f"This channel has been locked by {ctx.author.mention}.",
-                         discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-    except discord.Forbidden:
-        embed = make_embed("❌ Permission Denied",
-                         "I don't have permission to manage channel permissions.",
-                         discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-    except Exception as e:
-        embed = make_embed("❌ Error", f"An error occurred: {e}", discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-
-@bot.command()
-@commands.has_permissions(manage_channels=True)
-async def unlock(ctx):
-    try:
-        await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=True)
-        embed = make_embed("🔓 Channel Unlocked",
-                         f"This channel has been unlocked by {ctx.author.mention}.",
-                         discord.Color.green())
-        await send_with_rate_limit(ctx, embed=embed)
-    except discord.Forbidden:
-        embed = make_embed("❌ Permission Denied",
-                         "I don't have permission to manage channel permissions.",
-                         discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-    except Exception as e:
-        embed = make_embed("❌ Error", f"An error occurred: {e}", discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-
-@bot.command()
-@commands.has_permissions(manage_roles=True)
-async def giverole(ctx, member: discord.Member = None, *, role_name=None):
-    if not member or not role_name:
-        embed = make_embed("⚠️ Giverole Usage", "%giverole @user RoleName",
-                         discord.Color.yellow())
-        await send_with_rate_limit(ctx, embed=embed)
-        return
-    role = discord.utils.get(ctx.guild.roles, name=role_name)
-    if not role:
-        embed = make_embed("❌ Role Not Found", f"Role '{role_name}' not found.",
-                         discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-        return
-    try:
-        await member.add_roles(role)
-        embed = make_embed("✅ Role Given",
-                         f"Given the role **{role.name}** to {member.mention}.",
-                         discord.Color.green())
-        await send_with_rate_limit(ctx, embed=embed)
-    except discord.Forbidden:
-        embed = make_embed("❌ Permission Denied",
-                         "I don't have permission to manage roles for this user.",
-                         discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-    except Exception as e:
-        embed = make_embed("❌ Error", f"An error occurred: {e}", discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-
-@bot.command()
-@commands.has_permissions(manage_roles=True)
-async def removerole(ctx, member: discord.Member = None, *, role_name=None):
-    if not member or not role_name:
-        embed = make_embed("⚠️ Removerole Usage", "%removerole @user RoleName",
-                         discord.Color.yellow())
-        await send_with_rate_limit(ctx, embed=embed)
-        return
-    role = discord.utils.get(ctx.guild.roles, name=role_name)
-    if not role:
-        embed = make_embed("❌ Role Not Found", f"Role '{role_name}' not found.",
-                         discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-        return
-    try:
-        await member.remove_roles(role)
-        embed = make_embed("🗑️ Role Removed",
-                         f"Removed the **{role.name}** role from {member.mention}.",
-                         discord.Color.green())
-        await send_with_rate_limit(ctx, embed=embed)
-    except discord.Forbidden:
-        embed = make_embed("❌ Permission Denied",
-                         "I don't have permission to manage roles for this user.",
-                         discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
-    except Exception as e:
-        embed = make_embed("❌ Error", f"An error occurred: {e}", discord.Color.red())
-        await send_with_rate_limit(ctx, embed=embed)
 
 #################################
-# --- TOKEN SYSTEM COMMANDS --- #
+# --- TOKEN ECONOMY COMMANDS --- #
 #################################
+
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def give(ctx, member: discord.Member, amount: int):
     if ctx.author.id not in AUTHORIZED_GIVERS:
-        return await ctx.send("❌ You are not authorized to give tokens.")
-    if amount <= 0:
-        return await ctx.send("❌ Please enter a positive amount.")
+        return await ctx.send(embed=make_embed("Permission Denied", "You can't give tokens", 0xFF0000))
     add_tokens(member.id, amount)
-    await ctx.send(f"✅ Gave {amount} VRT tokens to {member.display_name}.")
+    await ctx.send(embed=make_embed(
+        "✅ Tokens Given",
+        f"Gave {amount} VRT tokens to {member.mention}",
+        0x00ff00
+    ))
 
 @bot.command()
 async def balance(ctx, member: discord.Member = None):
     member = member or ctx.author
     bal = get_balance(member.id)
-    await ctx.send(f"💰 {member.display_name} has {bal} VRT tokens.")
-
-@bot.command()
-async def shop(ctx):
-    embed = discord.Embed(title="🛒 VRT Token Shop", color=discord.Color.gold())
-    for item, data in SHOP_ITEMS.items():
-        embed.add_field(name=item.title(), value=f"{data['price']} VRT tokens", inline=False)
-    await ctx.send(embed=embed)
+    await ctx.send(embed=make_embed(
+        "💰 Token Balance",
+        f"{member.mention} has **{bal}** VRT tokens",
+        0x7289da
+    ))
 
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def remove(ctx, member: discord.Member, amount: int):
     if ctx.author.id not in AUTHORIZED_GIVERS:
-        return await ctx.send("❌ You are not authorized to remove tokens.")
-    if amount <= 0:
-        return await ctx.send("❌ Please enter a positive amount.")
+        return await ctx.send(embed=make_embed("Permission Denied", "You can't remove tokens", 0xFF0000))
     if subtract_tokens(member.id, amount):
-        await ctx.send(f"❌ Removed {amount} VRT tokens from {member.display_name}.")
+        await ctx.send(embed=make_embed(
+            "❌ Tokens Removed",
+            f"Removed {amount} VRT tokens from {member.mention}",
+            0xFFA500
+        ))
     else:
-        await ctx.send("⚠️ User doesn't have enough tokens to remove.")
+        await ctx.send(embed=make_embed(
+            "⚠️ Error",
+            "User doesn't have enough tokens",
+            0xFF0000
+        ))
 
 @bot.command()
 async def buy(ctx, *, item_name: str):
-    item_name = item_name.lower()
-    if item_name not in SHOP_ITEMS:
-        return await ctx.send("❌ That item doesn't exist in the shop.")
-
-    item = SHOP_ITEMS[item_name]
-    price = item['price']
-    role_name = item['role_name']
-
-    if subtract_tokens(ctx.author.id, price):
-        role = discord.utils.get(ctx.guild.roles, name=role_name)
-        if not role:
-            role = await ctx.guild.create_role(name=role_name)
+    item = SHOP_ITEMS.get(item_name.lower())
+    if not item:
+        return await ctx.send(embed=make_embed(
+            "⚠️ Invalid Item",
+            "That item doesn't exist in the shop",
+            0xFF0000
+        ))
+    
+    if subtract_tokens(ctx.author.id, item["price"]):
+        role = discord.utils.get(ctx.guild.roles, name=item["role_name"]) or \
+               await ctx.guild.create_role(name=item["role_name"])
         await ctx.author.add_roles(role)
-        await ctx.send(f"✅ You bought **{item_name}** for {price} VRT tokens and received the **{role_name}** role!")
+        await ctx.send(embed=make_embed(
+            "✅ Purchase Successful",
+            f"You bought **{item_name}** for {item['price']} VRT tokens!",
+            0x00ff00
+        ))
     else:
-        await ctx.send("❌ You don't have enough VRT tokens.")
+        await ctx.send(embed=make_embed(
+            "⚠️ Insufficient Tokens",
+            "You don't have enough VRT tokens",
+            0xFF0000
+        ))
 
 #################################
 # --- APPLICATION COMMAND --- #
 #################################
+
 @bot.command()
 async def apply(ctx):
     class AppDropdown(discord.ui.Select):
         def __init__(self):
             options = [
-                discord.SelectOption(label="Apply Now", description="Apply if you're interested or seeking collab"), ]
+                discord.SelectOption(label="Tournament Staff", description="Apply as a Tournament Staff"),
+                discord.SelectOption(label="Esports Staff", description="Apply as an Esports Staff"),
+                discord.SelectOption(label="Clubs Manager", description="Apply as a Clubs Manager"),
+                discord.SelectOption(label="Server Moderation", description="Apply for Moderation role"),
+                discord.SelectOption(label="Collab application", description="Apply for a Collaboration/Sponsorship")
+            ]
             super().__init__(placeholder="Choose Application Type", min_values=1, max_values=1, options=options)
 
         async def callback(self, interaction: discord.Interaction):
-            form_url = "https://forms.gle/6z4uwojbPhxwqYqn8"
-
+            form_url = "https://alphaenforcers.blogspot.com/p/apply-to-be-part-of-our-management.html"
             try:
                 await interaction.user.send(
                     f"🎉 **Thanks for applying for {self.values[0]}!**\n📝 Fill your form here: {form_url}\n\nBe honest and detailed in your answers!"
@@ -692,48 +491,42 @@ async def apply(ctx):
 
     await ctx.send(embed=embed, view=AppDropdownView())
 
-@bot.event
-async def on_message(message):
-    # Ignore bots and allowed roles
-    if message.author.bot:
-        return
-    
-    allowed_roles = ["Board of Directors", "Associate Directors"]  # Change to your role names
-    if any(role.name in allowed_roles for role in message.author.roles):
-        await bot.process_commands(message)
-        return
-    
-    # Check for Discord invites
-    if "discord.gg/" in message.content.lower() or "discord.com/invite/" in message.content.lower():
-        try:
-            await message.delete()
-        except:
-            pass  # If we can't delete, just continue
-            
-        # Create warning embed
-        embed = discord.Embed(
-            title="⚠️ Discord Invites Not Allowed",
-            description=f"{message.author.mention} No Discord invite links are permitted here!",
-            color=0xFF0000  # Red color for warning
-        )
-        embed.add_field(
-            name="Rule Violation",
-            value="Posting invite links is against server rules",
-            inline=False
-        )
-        
-        # Send to both channel and user
-        warning = await message.channel.send(embed=embed)
-        try:
-            await message.author.send(embed=embed)
-        except:
-            pass  # Couldn't DM user
-        
-        # Delete warning after 10 seconds
-        await asyncio.sleep(10)
-        await warning.delete()
-    
-    await bot.process_commands(message)
+#################################
+# --- BASIC COMMANDS --- #
+#################################
 
-# Run bot
+@bot.command()
+async def afk(ctx, *, reason="AFK"):
+    afk_users[ctx.author.id] = reason
+    afk_data[ctx.author.id] = {
+        "time": ctx.message.created_at,
+        "mentions": 0,
+        "reason": reason
+    }
+    embed = make_embed("🛌 AFK Activated", 
+                      f"{ctx.author.mention} is now AFK: {reason}",
+                      discord.Color.blurple())
+    await send_with_rate_limit(ctx, embed=embed)
+
+@bot.command()
+async def userinfo(ctx, member: discord.Member = None):
+    member = member or ctx.author
+    embed = discord.Embed(title=f"{member}'s Info", color=discord.Color.blue())
+    embed.add_field(name="ID", value=member.id)
+    embed.add_field(name="Joined", value=member.joined_at.strftime("%b %d, %Y"))
+    embed.add_field(name="Account Created", value=member.created_at.strftime("%b %d, %Y"))
+    embed.set_thumbnail(url=member.display_avatar.url if member.display_avatar else None)
+    await send_with_rate_limit(ctx, embed=embed)
+
+@bot.command()
+async def serverinfo(ctx):
+    guild = ctx.guild
+    embed = discord.Embed(title=f"Server Info - {guild.name}", color=discord.Color.green())
+    embed.add_field(name="Members", value=guild.member_count)
+    embed.add_field(name="Channels", value=len(guild.channels))
+    embed.add_field(name="Roles", value=len(guild.roles))
+    embed.add_field(name="Created On", value=guild.created_at.strftime("%B %d, %Y"))
+    embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+    await send_with_rate_limit(ctx, embed=embed)
+
 bot.run(os.getenv('TOKEN'))
