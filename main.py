@@ -160,11 +160,15 @@ async def update_invite_cache():
     for guild in bot.guilds:
         try:
             invites = await guild.invites()
-            invite_data[guild.id] = {invite.code: {"uses": invite.uses, "inviter": invite.inviter.id} 
-                                    for invite in invites if invite.inviter}
+            invite_data[guild.id] = {
+                invite.code: {
+                    "uses": invite.uses, 
+                    "inviter": invite.inviter.id
+                } for invite in invites if invite.inviter
+            }
         except Exception as e:
-            print(f"Error updating invites: {e}")
-    save_invite_data(invite_data)  # Moved outside the try-except block)
+            print(f"Error updating invites for guild {guild.id}: {e}")
+    save_invite_data(invite_data)  # This should be at the same level as the for loop
 
 # Events
 
@@ -175,17 +179,23 @@ async def save_invite_data_task():
 
 @bot.event
 async def on_ready():
-    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="you, be good or I'll spank"))
+    await bot.change_presence(activity=discord.Activity(
+        type=discord.ActivityType.watching, 
+        name="you, be good or I'll spank"
+    ))
     print(f"✅ {bot.user} is online!")
+    
+    # Initialize invite cache
     await update_invite_cache()
-save_invite_data_task.start()  # <-- ADD THIS LINE
+    
+    # Start the save task
+    save_invite_data_task.start()
     
     # Initialize member join times
     for guild in bot.guilds:
         async for member in guild.fetch_members(limit=None):
             if member.joined_at:
                 member_join_times[guild.id].append(member.joined_at.replace(tzinfo=None))
-
 @bot.event
 async def on_invite_create(invite):
     await update_invite_cache()
