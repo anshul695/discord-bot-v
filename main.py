@@ -21,8 +21,11 @@ def load_invite_data():
         return {}
 
 def save_invite_data(data):
-    with open(INVITE_DATA_FILE, 'w') as f:
-        json.dump(data, f, indent=4)
+    try:
+        with open(INVITE_DATA_FILE, 'w') as f:
+            json.dump(data, f, indent=4)
+    except Exception as e:
+        print(f"Error saving invite data: {e}")
 
 def load_invite_leaderboard():
     if not os.path.exists(INVITE_LEADERBOARD_FILE):
@@ -159,9 +162,9 @@ async def update_invite_cache():
             invites = await guild.invites()
             invite_data[guild.id] = {invite.code: {"uses": invite.uses, "inviter": invite.inviter.id} 
                                     for invite in invites if invite.inviter}
-save_invite_data(invite_data)  # <-- ADD THIS LINE
         except Exception as e:
             print(f"Error updating invites: {e}")
+    save_invite_data(invite_data)  # Moved outside the try-except block)
 
 # Events
 
