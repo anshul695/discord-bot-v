@@ -199,39 +199,67 @@ async def on_message(message):
                 "time": message.created_at.replace(tzinfo=None),
                 "jump_url": message.jump_url
             })
-            await message.channel.send(f"ℹ️ {mention.display_name} is AFK: {afk_users[mention.id]['reason']}")
+            
+            # Send AFK notice in embed
+            embed = discord.Embed(
+                description=f"ℹ️ {mention.display_name} is AFK: {afk_users[mention.id]['reason']}",
+                color=discord.Color.orange()
+            )
+            await message.channel.send(embed=embed)
 
     # Welcome back from AFK
     if message.author.id in afk_users:
         mentions = afk_mentions.pop(message.author.id, [])
         duration = (datetime.utcnow() - afk_users[message.author.id]["time"]).total_seconds()
         reason = afk_users[message.author.id]["reason"]
+        duration_str = f"{duration//3600:.0f} hours, {(duration%3600)//60:.0f} minutes" if duration >= 3600 else f"{duration//60:.0f} minutes"
         
+        # Create view with button only if there are mentions
         view = discord.ui.View()
         if mentions:
-            button = discord.ui.Button(label=f"See {len(mentions)} mentions", style=discord.ButtonStyle.blurple)
+            button = discord.ui.Button(
+                label=f"See {len(mentions)} mentions",
+                style=discord.ButtonStyle.blurple,
+                custom_id=f"afk_mentions_{message.author.id}"
+            )
             
             async def button_callback(interaction):
+                # Only allow the AFK user to see their mentions
+                if interaction.user.id != message.author.id:
+                    await interaction.response.send_message(
+                        "❌ These mentions are private to the AFK user.",
+                        ephemeral=True
+                    )
+                    return
+                    
                 mention_list = "\n".join(
                     f"• <@{m['author']}>: {m['message']} ([Jump]({m['jump_url']}))" 
-                    for m in mentions[:25]
+                    for m in mentions[:25]  # Limit to 25 mentions to avoid too long messages
                 )
-                await interaction.response.send_message(
-                    f"🔔 You were mentioned {len(mentions)} times while AFK:\n{mention_list}",
-                    ephemeral=True
+                
+                embed = discord.Embed(
+                    title=f"🔔 You were mentioned {len(mentions)} times while AFK",
+                    description=mention_list,
+                    color=discord.Color.blue()
                 )
+                
+                if len(mentions) > 25:
+                    embed.set_footer(text=f"Showing 25 out of {len(mentions)} mentions")
+                
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             
             button.callback = button_callback
             view.add_item(button)
         
-        embed = make_embed(
-            "🎉 Welcome Back!",
-            f"{message.author.mention} is no longer AFK!\n"
-            f"⏱️ Duration: {duration//60:.0f} minutes\n"
-            f"📨 Mentions: {len(mentions)}\n"
-            f"💬 Reason: {reason}",
-            discord.Color.green()
+        # Welcome back embed (public)
+        embed = discord.Embed(
+            title="🎉 Welcome Back!",
+            description=f"{message.author.mention} is no longer AFK",
+            color=discord.Color.green()
         )
+        embed.add_field(name="⏱️ Duration", value=duration_str, inline=True)
+        embed.add_field(name="📨 Mentions", value=str(len(mentions)), inline=True)
+        embed.add_field(name="💬 Reason", value=reason, inline=False)
         
         await message.channel.send(embed=embed, view=view)
         del afk_users[message.author.id]
@@ -761,7 +789,12 @@ async def afk(ctx, *, reason="AFK"):
         "reason": reason
     }
     afk_mentions[ctx.author.id] = []
-    await ctx.send(f"🛌 {ctx.author.mention} is now AFK: {reason}")
+    
+    embed = discord.Embed(
+        description=f"🛌 {ctx.author.mention} is now AFK: {reason}",
+        color=discord.Color.orange()
+    )
+    await ctx.send(embed=embed)
 
 @bot.command()
 async def userinfo(ctx, member: discord.Member = None):
