@@ -229,15 +229,14 @@ async def on_member_join(member):
             welcome_msg = random.choice(welcome_messages).format(member, inviter)
             await channel.send(welcome_msg)
             
-            if used_invite and used_invite.inviter:
-    inviter_id = used_invite.inviter.id
-    invite_leaderboard.setdefault(guild.id, {})[inviter_id] = invite_leaderboard.get(guild.id, {}).get(inviter_id, 0) + 1
-    save_invite_leaderboard(invite_leaderboard)  # <-- ADD THIS LINE
+            if used_invite and used_invite.inviter:  # This is line 232
+                inviter_id = used_invite.inviter.id  # This is line 233
+                invite_leaderboard.setdefault(guild.id, {})[inviter_id] = invite_leaderboard.get(guild.id, {}).get(inviter_id, 0) + 1
+                save_invite_leaderboard(invite_leaderboard)
 
         await update_invite_cache()
     except Exception as e:
         print(f"Error in member join: {e}")
-
 @bot.event
 async def on_message(message):
     if message.author.bot:
