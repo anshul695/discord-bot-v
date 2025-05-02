@@ -10,6 +10,35 @@ from collections import defaultdict
 
 keep_alive()
 
+def load_invite_data():
+    if not os.path.exists(INVITE_DATA_FILE):
+        return {}
+    try:
+        with open(INVITE_DATA_FILE, 'r') as f:
+            data = json.load(f)
+            return {int(guild_id): guild_data for guild_id, guild_data in data.items()}
+    except:
+        return {}
+
+def save_invite_data(data):
+    with open(INVITE_DATA_FILE, 'w') as f:
+        json.dump(data, f, indent=4)
+
+def load_invite_leaderboard():
+    if not os.path.exists(INVITE_LEADERBOARD_FILE):
+        return {}
+    try:
+        with open(INVITE_LEADERBOARD_FILE, 'r') as f:
+            data = json.load(f)
+            return {int(guild_id): {int(user_id): count for user_id, count in guild_data.items()} 
+                   for guild_id, guild_data in data.items()}
+    except:
+        return {}
+
+def save_invite_leaderboard(data):
+    with open(INVITE_LEADERBOARD_FILE, 'w') as f:
+        json.dump(data, f, indent=4)
+
 # Bot Setup
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="%", intents=intents, help_command=None)
@@ -18,8 +47,8 @@ bot = commands.Bot(command_prefix="%", intents=intents, help_command=None)
 afk_users = {}  # {user_id: {"time": datetime, "reason": str}}
 afk_mentions = defaultdict(list)  # {user_id: [{"author": user_id, "message": str, "time": datetime, "jump_url": str}]}
 warns = defaultdict(list)  # {user_id: [{"reason": str, "moderator": user_id, "time": datetime}]}
-invite_data = {}  # {guild_id: {invite_code: {"uses": int, "inviter": user_id}}}
-invite_leaderboard = {}  # {guild_id: {user_id: invite_count}}
+invite_data = load_invite_data()  # Load from file
+invite_leaderboard = load_invite_leaderboard()  # Load from file
 member_join_times = defaultdict(list)  # {guild_id: [datetime]}
 muted_members = set()  # {guild_id: {user_id}}
 
@@ -28,6 +57,8 @@ AUTHORIZED_GIVERS = [1327923421442736180, 1097776051393929227, 90429076622502708
 TOKEN_FILE = 'tokens.json'
 WELCOME_CHANNEL_ID = 1363797902291374110
 MOD_LOG_CHANNEL_ID = 1361974563952529583  # Replace with your mod log channel ID
+INVITE_DATA_FILE = 'invite_data.json'         # Stores invite usage data
+INVITE_LEADERBOARD_FILE = 'invite_leaderboard.json'  # Stores leaderboard counts
 
 # Rate limiting
 MESSAGE_QUEUE_MAX_SIZE = 5
@@ -128,15 +159,23 @@ async def update_invite_cache():
             invites = await guild.invites()
             invite_data[guild.id] = {invite.code: {"uses": invite.uses, "inviter": invite.inviter.id} 
                                     for invite in invites if invite.inviter}
+save_invite_data(invite_data)  # <-- ADD THIS LINE
         except Exception as e:
             print(f"Error updating invites: {e}")
 
 # Events
+
+@tasks.loop(minutes=5.0)
+async def save_invite_data_task():
+    save_invite_data(invite_data)
+    save_invite_leaderboard(invite_leaderboard)
+
 @bot.event
 async def on_ready():
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="you, be good or I'll spank"))
     print(f"✅ {bot.user} is online!")
     await update_invite_cache()
+save_invite_data_task.start()  # <-- ADD THIS LINE
     
     # Initialize member join times
     for guild in bot.guilds:
@@ -178,8 +217,9 @@ async def on_member_join(member):
             await channel.send(welcome_msg)
             
             if used_invite and used_invite.inviter:
-                inviter_id = used_invite.inviter.id
-                invite_leaderboard.setdefault(guild.id, {})[inviter_id] = invite_leaderboard.get(guild.id, {}).get(inviter_id, 0) + 1
+    inviter_id = used_invite.inviter.id
+    invite_leaderboard.setdefault(guild.id, {})[inviter_id] = invite_leaderboard.get(guild.id, {}).get(inviter_id, 0) + 1
+    save_invite_leaderboard(invite_leaderboard)  # <-- ADD THIS LINE
 
         await update_invite_cache()
     except Exception as e:
