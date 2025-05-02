@@ -10,6 +10,14 @@ from collections import defaultdict
 
 keep_alive()
 
+# Configuration (put this at the very top, after imports but before functions)
+INVITE_DATA_FILE = 'invite_data.json'
+INVITE_LEADERBOARD_FILE = 'invite_leaderboard.json'
+AUTHORIZED_GIVERS = [1327923421442736180, 1097776051393929227, 904290766225027083]
+TOKEN_FILE = 'tokens.json'
+WELCOME_CHANNEL_ID = 1363797902291374110
+MOD_LOG_CHANNEL_ID = 1361974563952529583
+
 def load_invite_data():
     if not os.path.exists(INVITE_DATA_FILE):
         return {}
@@ -54,14 +62,6 @@ invite_data = load_invite_data()  # Load from file
 invite_leaderboard = load_invite_leaderboard()  # Load from file
 member_join_times = defaultdict(list)  # {guild_id: [datetime]}
 muted_members = set()  # {guild_id: {user_id}}
-
-# Configuration
-AUTHORIZED_GIVERS = [1327923421442736180, 1097776051393929227, 904290766225027083]
-TOKEN_FILE = 'tokens.json'
-WELCOME_CHANNEL_ID = 1363797902291374110
-MOD_LOG_CHANNEL_ID = 1361974563952529583  # Replace with your mod log channel ID
-INVITE_DATA_FILE = 'invite_data.json'         # Stores invite usage data
-INVITE_LEADERBOARD_FILE = 'invite_leaderboard.json'  # Stores leaderboard counts
 
 # Rate limiting
 MESSAGE_QUEUE_MAX_SIZE = 5
