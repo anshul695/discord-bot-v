@@ -817,7 +817,7 @@ async def buy(ctx, *, item_name: str):
             "🎉 Congratulations on Your Purchase!",
             f"You've successfully purchased **{item_name.title()}**!\n\n"
             "To claim your reward, please open a ticket in our server:\n"
-            "[Click here to open a ticket](https://discord.com/channels/your-server-id/your-ticket-channel-id)\n\n"
+            "[Click here to open a ticket](https://discord.com/channels/1361746864940126500/1361981433698189412)\n\n"
             "Our staff will assist you with your reward shortly.",
             0x00ff00
         )
@@ -833,32 +833,32 @@ async def buy(ctx, *, item_name: str):
         ))
         return
     
-# In the buy command, replace the shop_channel.send part with this:
-if shop_channel:
-    log_embed = make_embed(
-        "🛒 New Shop Purchase",
-        f"**Buyer:** {ctx.author.mention} ({ctx.author.id})\n"
-        f"**Item:** {item_name.title()}\n"
-        f"**Price:** {item['price']:,} VRT",
-        0xffd700
-    )
-    
-    # Get the role objects
-    board_role = discord.utils.get(ctx.guild.roles, name="Board of Directors")
-    associate_role = discord.utils.get(ctx.guild.roles, name="Associate Directors")
-    
-    # Create the ping string
-    ping_string = ""
-    if board_role:
-        ping_string += f"{board_role.mention} "
-    if associate_role:
-        ping_string += f"{associate_role.mention}"
-    
-    await shop_channel.send(
-        content=ping_string.strip() if ping_string else None,
-        embed=log_embed
-    )
-
+    # Send notification to shop log channel
+    shop_channel = ctx.guild.get_channel(SHOP_LOG_CHANNEL_ID)
+    if shop_channel:
+        # Get the role objects
+        board_role = discord.utils.get(ctx.guild.roles, name="Board of Directors")
+        associate_role = discord.utils.get(ctx.guild.roles, name="Associate Directors")
+        
+        # Create the ping string
+        ping_string = ""
+        if board_role:
+            ping_string += f"{board_role.mention} "
+        if associate_role:
+            ping_string += f"{associate_role.mention}"
+        
+        log_embed = make_embed(
+            "🛒 New Shop Purchase",
+            f"**Buyer:** {ctx.author.mention} ({ctx.author.id})\n"
+            f"**Item:** {item_name.title()}\n"
+            f"**Price:** {item['price']:,} VRT",
+            0xffd700
+        )
+        
+        await shop_channel.send(
+            content=ping_string.strip() if ping_string else None,
+            embed=log_embed
+        )
 
 #################################
 # --- APPLICATION COMMAND --- #
