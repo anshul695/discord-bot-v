@@ -110,7 +110,7 @@ BALL_RESPONSES = [
 # Utility Functions
 def make_embed(title=None, description=None, color=discord.Color.blue()):
     embed = discord.Embed(title=title, description=description, color=color)
-    embed.set_footer(text="VRT Bot | Premium Experience")
+    embed.set_footer(text="made with ❤️ by Anshhhulll")
     return embed
 
 async def send_with_rate_limit(destination, content=None, *, embed=None, file=None, view=None):
@@ -844,8 +844,6 @@ async def buy(ctx, *, item_name: str):
         ping_string = ""
         if board_role:
             ping_string += f"{board_role.mention} "
-        if associate_role:
-            ping_string += f"{associate_role.mention}"
         
         log_embed = make_embed(
             "🛒 New Shop Purchase",
