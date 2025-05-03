@@ -10,13 +10,15 @@ from collections import defaultdict
 
 keep_alive()
 
-# Configuration (put this at the very top, after imports but before functions)
+# Configuration
 INVITE_DATA_FILE = 'invite_data.json'
 INVITE_LEADERBOARD_FILE = 'invite_leaderboard.json'
 AUTHORIZED_GIVERS = [1327923421442736180, 1097776051393929227, 904290766225027083]
 TOKEN_FILE = 'tokens.json'
 WELCOME_CHANNEL_ID = 1363797902291374110
 MOD_LOG_CHANNEL_ID = 1361974563952529583
+SHOP_LOG_CHANNEL_ID = 1363797902291374110
+FOUNDER_IDS = [1327923421442736180, 1097776051393929227, 904290766225027083]
 
 def load_invite_data():
     if not os.path.exists(INVITE_DATA_FILE):
@@ -55,13 +57,13 @@ intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="%", intents=intents, help_command=None)
 
 # Data Storage
-afk_users = {}  # {user_id: {"time": datetime, "reason": str}}
-afk_mentions = defaultdict(list)  # {user_id: [{"author": user_id, "message": str, "time": datetime, "jump_url": str}]}
-warns = defaultdict(list)  # {user_id: [{"reason": str, "moderator": user_id, "time": datetime}]}
-invite_data = load_invite_data()  # Load from file
-invite_leaderboard = load_invite_leaderboard()  # Load from file
-member_join_times = defaultdict(list)  # {guild_id: [datetime]}
-muted_members = set()  # {guild_id: {user_id}}
+afk_users = {}
+afk_mentions = defaultdict(list)
+warns = defaultdict(list)
+invite_data = load_invite_data()
+invite_leaderboard = load_invite_leaderboard()
+member_join_times = defaultdict(list)
+muted_members = set()
 
 # Rate limiting
 MESSAGE_QUEUE_MAX_SIZE = 5
@@ -69,12 +71,24 @@ MESSAGE_SEND_INTERVAL = 0.5
 message_queue = asyncio.Queue(maxsize=MESSAGE_QUEUE_MAX_SIZE)
 is_processing_queue = False
 
-# Shop items
+# Updated Shop items with categories
 SHOP_ITEMS = {
-    "brawl pass": {"price": 20000, "role_name": "Brawl Pass"},
-    "nitro 1 month": {"price": 18000, "role_name": "Nitro Winner"},
-    "custom role with custom color": {"price": 1500, "role_name": "Custom Role"},
-    "server updates/sneak peeks": {"price": 1000, "role_name": "Sneak Peek Access"}
+    "discord nitro": {"price": 25000, "role_name": "Nitro Winner", "type": "top"},
+    "brawl pass": {"price": 20000, "role_name": "Brawl Pass", "type": "top"},
+    "brawl pass+": {"price": 28000, "role_name": "Brawl Pass+", "type": "top"},
+    "discord nitro basic": {"price": 17500, "role_name": "Nitro Basic", "type": "top"},
+    "pro pass": {"price": 40000, "role_name": "Pro Pass", "type": "top"},
+    "rich customer": {"price": 50000, "role_name": "Rich Customer", "type": "top"},
+    "add 3 emojis": {"price": 10000, "role_name": "Emoji Addict", "type": "mid"},
+    "add 3 stickers": {"price": 12500, "role_name": "Sticker Addict", "type": "mid"},
+    "custom role (2 months)": {"price": 11000, "role_name": "Custom Role", "type": "mid"},
+    "+5 giveaway entries": {"price": 8000, "role_name": "Giveaway Lover", "type": "mid"},
+    "big customer": {"price": 15000, "role_name": "Big Customer", "type": "mid"},
+    "add an emoji": {"price": 4000, "role_name": "Emoji Fan", "type": "low"},
+    "add a sticker": {"price": 5000, "role_name": "Sticker Fan", "type": "low"},
+    "custom role (2 weeks)": {"price": 4500, "role_name": "Temporary Role", "type": "low"},
+    "+1 giveaway entry": {"price": 2000, "role_name": "Giveaway Participant", "type": "low"},
+    "lucky spin ticket": {"price": 800, "role_name": "Lucky Spinner", "type": "low"}
 }
 
 welcome_messages = [
@@ -85,7 +99,6 @@ welcome_messages = [
     "🤝 {0.mention} joined via **{1}**'s invite"
 ]
 
-# 8Ball responses
 BALL_RESPONSES = [
     "It is certain.", "It is decidedly so.", "Without a doubt.", "Yes - definitely.",
     "You may rely on it.", "As I see it, yes.", "Most likely.", "Outlook good.",
@@ -98,7 +111,7 @@ BALL_RESPONSES = [
 # Utility Functions
 def make_embed(title=None, description=None, color=discord.Color.blue()):
     embed = discord.Embed(title=title, description=description, color=color)
-    embed.set_footer(text="Anshhhulll's Bot")
+    embed.set_footer(text="VRT Bot | Premium Experience")
     return embed
 
 async def send_with_rate_limit(destination, content=None, *, embed=None, file=None, view=None):
@@ -163,15 +176,15 @@ async def update_invite_cache():
             invite_data[guild.id] = {
                 invite.code: {
                     "uses": invite.uses, 
-                    "inviter": invite.inviter.id
-                } for invite in invites if invite.inviter
+                    "inviter": invite.inviter.id if invite.inviter else None,
+                    "is_vanity": invite.code == guild.vanity_url_code if guild.vanity_url_code else False
+                } for invite in invites
             }
         except Exception as e:
             print(f"Error updating invites for guild {guild.id}: {e}")
-    save_invite_data(invite_data)  # This should be at the same level as the for loop
+    save_invite_data(invite_data)
 
 # Events
-
 @tasks.loop(minutes=5.0)
 async def save_invite_data_task():
     save_invite_data(invite_data)
@@ -184,18 +197,14 @@ async def on_ready():
         name="you, be good or I'll spank"
     ))
     print(f"✅ {bot.user} is online!")
-    
-    # Initialize invite cache
     await update_invite_cache()
-    
-    # Start the save task
     save_invite_data_task.start()
     
-    # Initialize member join times
     for guild in bot.guilds:
         async for member in guild.fetch_members(limit=None):
             if member.joined_at:
                 member_join_times[guild.id].append(member.joined_at.replace(tzinfo=None))
+
 @bot.event
 async def on_invite_create(invite):
     await update_invite_cache()
@@ -223,20 +232,28 @@ async def on_member_join(member):
                 used_invite = invite
                 break
         
-        inviter = used_invite.inviter if used_invite else "someone mysterious"
+        # Handle vanity URL case
+        if used_invite and used_invite.code == guild.vanity_url_code:
+            inviter = "Vanity Link"
+        elif used_invite and used_invite.inviter:
+            inviter = used_invite.inviter
+        else:
+            inviter = "someone mysterious"
+        
         channel = guild.get_channel(WELCOME_CHANNEL_ID)
         if channel:
             welcome_msg = random.choice(welcome_messages).format(member, inviter)
             await channel.send(welcome_msg)
             
-            if used_invite and used_invite.inviter:  # This is line 232
-                inviter_id = used_invite.inviter.id  # This is line 233
+            if used_invite and used_invite.inviter:  # Only track non-vanity invites
+                inviter_id = used_invite.inviter.id
                 invite_leaderboard.setdefault(guild.id, {})[inviter_id] = invite_leaderboard.get(guild.id, {}).get(inviter_id, 0) + 1
                 save_invite_leaderboard(invite_leaderboard)
 
         await update_invite_cache()
     except Exception as e:
         print(f"Error in member join: {e}")
+
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -252,7 +269,6 @@ async def on_message(message):
                 "jump_url": message.jump_url
             })
             
-            # Send AFK notice in embed
             embed = discord.Embed(
                 description=f"ℹ️ {mention.display_name} is AFK: {afk_users[mention.id]['reason']}",
                 color=discord.Color.orange()
@@ -266,7 +282,6 @@ async def on_message(message):
         reason = afk_users[message.author.id]["reason"]
         duration_str = f"{duration//3600:.0f} hours, {(duration%3600)//60:.0f} minutes" if duration >= 3600 else f"{duration//60:.0f} minutes"
         
-        # Create view with button only if there are mentions
         view = discord.ui.View()
         if mentions:
             button = discord.ui.Button(
@@ -276,7 +291,6 @@ async def on_message(message):
             )
             
             async def button_callback(interaction):
-                # Only allow the AFK user to see their mentions
                 if interaction.user.id != message.author.id:
                     await interaction.response.send_message(
                         "❌ These mentions are private to the AFK user.",
@@ -286,7 +300,7 @@ async def on_message(message):
                     
                 mention_list = "\n".join(
                     f"• <@{m['author']}>: {m['message']} ([Jump]({m['jump_url']}))" 
-                    for m in mentions[:25]  # Limit to 25 mentions to avoid too long messages
+                    for m in mentions[:25]
                 )
                 
                 embed = discord.Embed(
@@ -303,7 +317,6 @@ async def on_message(message):
             button.callback = button_callback
             view.add_item(button)
         
-        # Welcome back embed (public)
         embed = discord.Embed(
             title="🎉 Welcome Back!",
             description=f"{message.author.mention} is no longer AFK",
@@ -351,7 +364,6 @@ async def warn(ctx, member: discord.Member, *, reason: str):
     )
     await send_with_rate_limit(ctx, embed=embed)
     
-    # Send to mod log
     mod_channel = ctx.guild.get_channel(MOD_LOG_CHANNEL_ID)
     if mod_channel:
         await send_with_rate_limit(mod_channel, embed=embed)
@@ -394,7 +406,6 @@ async def kick(ctx, member: discord.Member, *, reason: str):
     )
     await send_with_rate_limit(ctx, embed=embed)
     
-    # Send to mod log
     mod_channel = ctx.guild.get_channel(MOD_LOG_CHANNEL_ID)
     if mod_channel:
         await send_with_rate_limit(mod_channel, embed=embed)
@@ -410,7 +421,6 @@ async def ban(ctx, member: discord.Member, *, reason: str):
     )
     await send_with_rate_limit(ctx, embed=embed)
     
-    # Send to mod log
     mod_channel = ctx.guild.get_channel(MOD_LOG_CHANNEL_ID)
     if mod_channel:
         await send_with_rate_limit(mod_channel, embed=embed)
@@ -447,7 +457,6 @@ async def mute(ctx, member: discord.Member, *, reason: str = "No reason provided
     )
     await send_with_rate_limit(ctx, embed=embed)
     
-    # Send to mod log
     mod_channel = ctx.guild.get_channel(MOD_LOG_CHANNEL_ID)
     if mod_channel:
         await send_with_rate_limit(mod_channel, embed=embed)
@@ -627,11 +636,9 @@ async def invitelb(ctx, limit: int = 10):
 
 @bot.command()
 async def membercount(ctx):
-    """Shows detailed member statistics"""
     guild = ctx.guild
     now = datetime.utcnow()
     
-    # Calculate time periods
     time_periods = {
         "Last 2 hours": timedelta(hours=2),
         "Last 6 hours": timedelta(hours=6),
@@ -640,13 +647,11 @@ async def membercount(ctx):
         "Last 7 days": timedelta(days=7)
     }
     
-    # Count members in each period
     join_counts = {}
     for period, delta in time_periods.items():
         cutoff = now - delta
         join_counts[period] = sum(1 for join_time in member_join_times[guild.id] if join_time > cutoff)
     
-    # Count online members
     online = sum(1 for m in guild.members if m.status != discord.Status.offline)
     
     embed = make_embed(
@@ -655,14 +660,12 @@ async def membercount(ctx):
         discord.Color.blue()
     )
     
-    # Add join time breakdown
     join_stats = "\n".join(
         f"• {period}: **{count}** joins" 
         for period, count in join_counts.items()
     )
     embed.add_field(name="Recent Joins", value=join_stats, inline=False)
     
-    # Add online status
     embed.add_field(
         name="Online Status",
         value=f"🟢 Online: **{online}**\n🔴 Offline: **{guild.member_count - online}**",
@@ -741,43 +744,134 @@ async def remove(ctx, member: discord.Member, amount: int):
 
 @bot.command()
 async def shop(ctx):
-    embed = make_embed("🛒 VRT Token Shop", color=0xffd700)
-    for item, data in SHOP_ITEMS.items():
-        embed.add_field(
-            name=item.title(),
-            value=f"Price: {data['price']} tokens\nReward: {data['role_name']} role",
-            inline=False
-        )
+    """Displays the VRT shop with categorized items"""
+    embed = discord.Embed(
+        title="🛒 VRT Coin Shop",
+        description="Welcome to the VRT Coin Shop! Earn coins by participating in events and redeem amazing rewards.",
+        color=0x00ff00
+    )
+    embed.set_thumbnail(url="https://i.imgur.com/Jty1oYF.png")
+    
+    # Add shop explanation
+    embed.add_field(
+        name="💡 How It Works",
+        value="> Earn VRT coins by winning events, completing quests, and staying active\n"
+              "> Use your coins to redeem epic rewards\n"
+              "> Only the most active players will climb to the top 🔥",
+        inline=False
+    )
+    
+    # Top Tier Rewards
+    top_items = [item for item in SHOP_ITEMS.values() if item["type"] == "top"]
+    top_text = "\n".join(
+        f"• **{item['role_name']}** - `{item['price']:,} VRT`"
+        for item in top_items
+    )
+    embed.add_field(
+        name="🏆 Top Tier Rewards",
+        value=top_text,
+        inline=False
+    )
+    
+    # Mid Tier Rewards
+    mid_items = [item for item in SHOP_ITEMS.values() if item["type"] == "mid"]
+    mid_text = "\n".join(
+        f"• **{item['role_name']}** - `{item['price']:,} VRT`"
+        for item in mid_items
+    )
+    embed.add_field(
+        name="🎯 Mid Tier Rewards",
+        value=mid_text,
+        inline=False
+    )
+    
+    # Low Tier Rewards
+    low_items = [item for item in SHOP_ITEMS.values() if item["type"] == "low"]
+    low_text = "\n".join(
+        f"• **{item['role_name']}** - `{item['price']:,} VRT`"
+        for item in low_items
+    )
+    embed.add_field(
+        name="🎁 Low Tier Rewards",
+        value=low_text,
+        inline=False
+    )
+    
+    embed.set_footer(text="Use %buy [item name] to purchase an item")
     await ctx.send(embed=embed)
 
 @bot.command()
 async def buy(ctx, *, item_name: str):
-    item = SHOP_ITEMS.get(item_name.lower())
+    item_name = item_name.lower()
+    item = SHOP_ITEMS.get(item_name)
+    
     if not item:
+        similar = [name for name in SHOP_ITEMS if item_name in name]
+        if similar:
+            return await ctx.send(embed=make_embed(
+                "⚠️ Did you mean...",
+                f"Similar items: {', '.join(similar)}",
+                discord.Color.orange()
+            ))
         return await ctx.send(embed=make_embed(
             "⚠️ Invalid Item",
-            "That item doesn't exist in the shop",
+            "That item doesn't exist in the shop. Use %shop to see available items.",
             discord.Color.red()
         ))
     
     if not subtract_tokens(ctx.author.id, item["price"]):
         return await ctx.send(embed=make_embed(
             "⚠️ Insufficient Tokens",
-            "You don't have enough VRT tokens",
+            f"You need {item['price']} VRT tokens to buy this.\n"
+            f"Your balance: {get_balance(ctx.author.id)} VRT",
             discord.Color.red()
         ))
     
     role = discord.utils.get(ctx.guild.roles, name=item["role_name"])
     if not role:
-        role = await ctx.guild.create_role(name=item["role_name"])
+        try:
+            role = await ctx.guild.create_role(name=item["role_name"])
+        except discord.Forbidden:
+            return await ctx.send(embed=make_embed(
+                "⚠️ Error",
+                "I don't have permission to create roles",
+                discord.Color.red()
+            ))
     
-    await ctx.author.add_roles(role)
-    await ctx.send(embed=make_embed(
+    try:
+        await ctx.author.add_roles(role)
+    except discord.Forbidden:
+        add_tokens(ctx.author.id, item["price"])
+        return await ctx.send(embed=make_embed(
+            "⚠️ Error",
+            "I don't have permission to add roles",
+            discord.Color.red()
+        ))
+    
+    # Send purchase confirmation
+    embed = make_embed(
         "✅ Purchase Successful",
-        f"You bought **{item_name}** for {item['price']} VRT tokens!\n"
+        f"You bought **{item_name.title()}** for {item['price']:,} VRT tokens!\n"
         f"You now have the **{role.name}** role",
         0x00ff00
-    ))
+    )
+    await ctx.send(embed=embed)
+    
+    # Send notification to shop log channel
+    shop_channel = ctx.guild.get_channel(SHOP_LOG_CHANNEL_ID)
+    if shop_channel:
+        log_embed = make_embed(
+            "🛒 New Shop Purchase",
+            f"**Buyer:** {ctx.author.mention} ({ctx.author.id})\n"
+            f"**Item:** {item_name.title()}\n"
+            f"**Price:** {item['price']:,} VRT\n"
+            f"**Role Given:** {role.mention}",
+            0xffd700
+        )
+        await shop_channel.send(
+            content=f"<@&Board of Directors> <@&Associate Directors>",
+            embed=log_embed
+        )
 
 #################################
 # --- APPLICATION COMMAND --- #
@@ -882,9 +976,16 @@ async def serverinfo(ctx):
     guild = ctx.guild
     online = sum(1 for m in guild.members if m.status != discord.Status.offline)
     
+    # Get all founders
+    founders = []
+    for founder_id in FOUNDER_IDS:
+        founder = guild.get_member(founder_id)
+        if founder:
+            founders.append(founder.mention)
+    
     embed = make_embed(
         f"🏰 {guild.name} Server Information",
-        f"Owner: {guild.owner.mention}",
+        f"**Founders:** {', '.join(founders) if founders else 'Not found'}",
         discord.Color.green()
     )
     embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
@@ -959,7 +1060,7 @@ async def help(ctx):
     # Token Economy
     embed.add_field(
         name="💰 Token Economy",
-        value="`balance`, `shop`, `buy`",
+        value="`balance`, `shop`, `buy`, `give`, `remove`",
         inline=False
     )
     
