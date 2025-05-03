@@ -17,7 +17,7 @@ AUTHORIZED_GIVERS = [1327923421442736180, 1097776051393929227, 90429076622502708
 TOKEN_FILE = 'tokens.json'
 WELCOME_CHANNEL_ID = 1363797902291374110
 MOD_LOG_CHANNEL_ID = 1361974563952529583
-SHOP_LOG_CHANNEL_ID = 1363797902291374110
+SHOP_LOG_CHANNEL_ID = 1367515544479338586
 FOUNDER_IDS = [1327923421442736180, 1097776051393929227, 904290766225027083]
 
 def load_invite_data():
@@ -71,24 +71,23 @@ MESSAGE_SEND_INTERVAL = 0.5
 message_queue = asyncio.Queue(maxsize=MESSAGE_QUEUE_MAX_SIZE)
 is_processing_queue = False
 
-# Updated Shop items with categories
+# Updated Shop items with categories (simplified version)
 SHOP_ITEMS = {
-    "discord nitro": {"price": 25000, "role_name": "Nitro Winner", "type": "top"},
-    "brawl pass": {"price": 20000, "role_name": "Brawl Pass", "type": "top"},
-    "brawl pass+": {"price": 28000, "role_name": "Brawl Pass+", "type": "top"},
-    "discord nitro basic": {"price": 17500, "role_name": "Nitro Basic", "type": "top"},
-    "pro pass": {"price": 40000, "role_name": "Pro Pass", "type": "top"},
-    "rich customer": {"price": 50000, "role_name": "Rich Customer", "type": "top"},
-    "add 3 emojis": {"price": 10000, "role_name": "Emoji Addict", "type": "mid"},
-    "add 3 stickers": {"price": 12500, "role_name": "Sticker Addict", "type": "mid"},
-    "custom role (2 months)": {"price": 11000, "role_name": "Custom Role", "type": "mid"},
-    "+5 giveaway entries": {"price": 8000, "role_name": "Giveaway Lover", "type": "mid"},
-    "big customer": {"price": 15000, "role_name": "Big Customer", "type": "mid"},
-    "add an emoji": {"price": 4000, "role_name": "Emoji Fan", "type": "low"},
-    "add a sticker": {"price": 5000, "role_name": "Sticker Fan", "type": "low"},
-    "custom role (2 weeks)": {"price": 4500, "role_name": "Temporary Role", "type": "low"},
-    "+1 giveaway entry": {"price": 2000, "role_name": "Giveaway Participant", "type": "low"},
-    "lucky spin ticket": {"price": 800, "role_name": "Lucky Spinner", "type": "low"}
+    "discord nitro": {"price": 25000, "type": "top", "description": "1 month of Discord Nitro"},
+    "brawl pass": {"price": 20000, "type": "top", "description": "Brawl Stars season pass"},
+    "brawl pass+": {"price": 28000, "type": "top", "description": "Brawl Stars season pass with bonus rewards"},
+    "discord nitro basic": {"price": 17500, "type": "top", "description": "1 month of Discord Nitro Basic"},
+    "pro pass": {"price": 40000, "type": "top", "description": "Professional gaming season pass"},
+    "rich customer role": {"price": 50000, "type": "top", "description": "Exclusive Rich Customer role high discount on other things"},
+    "add 3 emojis": {"price": 10000, "type": "mid", "description": "Add 3 custom emojis to server"},
+    "add 3 stickers": {"price": 12500, "type": "mid", "description": "Add 3 custom stickers to server"},
+    "custom role (2 months)": {"price": 11000, "type": "mid", "description": "Custom role with color for 2 months"},
+    "+5 giveaway entries": {"price": 8000, "type": "mid", "description": "5 extra entries in giveaways"},
+    "big customer role": {"price": 15000, "type": "mid", "description": "Get a significant discount for specific time"},
+    "add an emoji": {"price": 4000, "type": "low", "description": "Add 1 custom emoji to server"},
+    "add a sticker": {"price": 5000, "type": "low", "description": "Add 1 custom sticker to server"},
+    "custom role (2 weeks)": {"price": 4500, "type": "low", "description": "Custom role with color for 2 weeks"},
+    
 }
 
 welcome_messages = [
@@ -746,57 +745,33 @@ async def remove(ctx, member: discord.Member, amount: int):
 async def shop(ctx):
     """Displays the VRT shop with categorized items"""
     embed = discord.Embed(
-        title="🛒 VRT Coin Shop",
-        description="Welcome to the VRT Coin Shop! Earn coins by participating in events and redeem amazing rewards.",
+        title="## **Welcome to the VRT Coin Shop!**",
+        description=(
+            "### **How Does It Work?**\n\n"
+            "> Earn **VRT coins** by winning events, completing quests, and staying active in the community. "
+            "Use your coins to redeem epic rewards like **Discord Nitro**, **Brawl Passes**, and more. "
+            "Only the most active players will climb to the top 🔥\n\n"
+            "### **Top Tier Rewards**\n\n"
+            "> * **Discord Nitro** – `25,000 VRT`\n"
+            "> * **Brawl Pass** – `20,000 VRT`\n"
+            "> * **Brawl Pass+** – `28,000 VRT`\n"
+            "> * **Discord Nitro Basic** – `17,500 VRT`\n"
+            "> * **Pro Pass** - `40,000 VRT`\n"
+            "> * **\"@Rich Customer\" role** - `50,000 VRT`\n\n"
+            "### **Mid Tier Rewards**\n\n"
+            "> * **Add 3 emojis** - `10,000 VRT`\n"
+            "> * **Add 3 stickers** - `12,500 VRT`\n"
+            "> * **Custom role (2 months)** – `11,000 VRT`\n"
+            "> * **+5 giveaway entries** -  `8,000 VRT`\n"
+            "> * **\"@Big Customer\" role** – `15,000 VRT`\n\n"
+            "### **Low Tier Rewards**\n\n"
+            "> * **Add an emoji** - `4,000 VRT`\n"
+            "> * **Add a sticker** - `5,000 VRT`\n"
+            "> * **Custom Role (2 Weeks)** – `4,500 VRT`\n"
+            "> * **+1 giveaway entry** -  `2,000 VRT`"
+        ),
         color=0x00ff00
     )
-    embed.set_thumbnail(url="https://i.imgur.com/Jty1oYF.png")
-    
-    # Add shop explanation
-    embed.add_field(
-        name="💡 How It Works",
-        value="> Earn VRT coins by winning events, completing quests, and staying active\n"
-              "> Use your coins to redeem epic rewards\n"
-              "> Only the most active players will climb to the top 🔥",
-        inline=False
-    )
-    
-    # Top Tier Rewards
-    top_items = [item for item in SHOP_ITEMS.values() if item["type"] == "top"]
-    top_text = "\n".join(
-        f"• **{item['role_name']}** - `{item['price']:,} VRT`"
-        for item in top_items
-    )
-    embed.add_field(
-        name="🏆 Top Tier Rewards",
-        value=top_text,
-        inline=False
-    )
-    
-    # Mid Tier Rewards
-    mid_items = [item for item in SHOP_ITEMS.values() if item["type"] == "mid"]
-    mid_text = "\n".join(
-        f"• **{item['role_name']}** - `{item['price']:,} VRT`"
-        for item in mid_items
-    )
-    embed.add_field(
-        name="🎯 Mid Tier Rewards",
-        value=mid_text,
-        inline=False
-    )
-    
-    # Low Tier Rewards
-    low_items = [item for item in SHOP_ITEMS.values() if item["type"] == "low"]
-    low_text = "\n".join(
-        f"• **{item['role_name']}** - `{item['price']:,} VRT`"
-        for item in low_items
-    )
-    embed.add_field(
-        name="🎁 Low Tier Rewards",
-        value=low_text,
-        inline=False
-    )
-    
     embed.set_footer(text="Use %buy [item name] to purchase an item")
     await ctx.send(embed=embed)
 
@@ -827,51 +802,63 @@ async def buy(ctx, *, item_name: str):
             discord.Color.red()
         ))
     
-    role = discord.utils.get(ctx.guild.roles, name=item["role_name"])
-    if not role:
-        try:
-            role = await ctx.guild.create_role(name=item["role_name"])
-        except discord.Forbidden:
-            return await ctx.send(embed=make_embed(
-                "⚠️ Error",
-                "I don't have permission to create roles",
-                discord.Color.red()
-            ))
-    
-    try:
-        await ctx.author.add_roles(role)
-    except discord.Forbidden:
-        add_tokens(ctx.author.id, item["price"])
-        return await ctx.send(embed=make_embed(
-            "⚠️ Error",
-            "I don't have permission to add roles",
-            discord.Color.red()
-        ))
-    
-    # Send purchase confirmation
+    # Send purchase confirmation to user
     embed = make_embed(
         "✅ Purchase Successful",
-        f"You bought **{item_name.title()}** for {item['price']:,} VRT tokens!\n"
-        f"You now have the **{role.name}** role",
+        f"You bought **{item_name.title()}** for {item['price']:,} VRT tokens!\n\n"
+        "Please check your DMs for instructions on how to claim your reward.",
         0x00ff00
     )
     await ctx.send(embed=embed)
     
-    # Send notification to shop log channel
-    shop_channel = ctx.guild.get_channel(SHOP_LOG_CHANNEL_ID)
-    if shop_channel:
-        log_embed = make_embed(
-            "🛒 New Shop Purchase",
-            f"**Buyer:** {ctx.author.mention} ({ctx.author.id})\n"
-            f"**Item:** {item_name.title()}\n"
-            f"**Price:** {item['price']:,} VRT\n"
-            f"**Role Given:** {role.mention}",
-            0xffd700
+    # Send DM with claim instructions
+    try:
+        dm_embed = make_embed(
+            "🎉 Congratulations on Your Purchase!",
+            f"You've successfully purchased **{item_name.title()}**!\n\n"
+            "To claim your reward, please open a ticket in our server:\n"
+            "[Click here to open a ticket](https://discord.com/channels/your-server-id/your-ticket-channel-id)\n\n"
+            "Our staff will assist you with your reward shortly.",
+            0x00ff00
         )
-        await shop_channel.send(
-            content=f"<@&Board of Directors> <@&Associate Directors>",
-            embed=log_embed
-        )
+        await ctx.author.send(embed=dm_embed)
+    except discord.Forbidden:
+        # Refund if DM fails
+        add_tokens(ctx.author.id, item["price"])
+        await ctx.send(embed=make_embed(
+            "⚠️ Error",
+            "I couldn't DM you. Please enable DMs and try again.\n"
+            "Your tokens have been refunded.",
+            discord.Color.red()
+        ))
+        return
+    
+# In the buy command, replace the shop_channel.send part with this:
+if shop_channel:
+    log_embed = make_embed(
+        "🛒 New Shop Purchase",
+        f"**Buyer:** {ctx.author.mention} ({ctx.author.id})\n"
+        f"**Item:** {item_name.title()}\n"
+        f"**Price:** {item['price']:,} VRT",
+        0xffd700
+    )
+    
+    # Get the role objects
+    board_role = discord.utils.get(ctx.guild.roles, name="Board of Directors")
+    associate_role = discord.utils.get(ctx.guild.roles, name="Associate Directors")
+    
+    # Create the ping string
+    ping_string = ""
+    if board_role:
+        ping_string += f"{board_role.mention} "
+    if associate_role:
+        ping_string += f"{associate_role.mention}"
+    
+    await shop_channel.send(
+        content=ping_string.strip() if ping_string else None,
+        embed=log_embed
+    )
+
 
 #################################
 # --- APPLICATION COMMAND --- #
