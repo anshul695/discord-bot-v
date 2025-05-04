@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 from keep_alive import keep_alive
 import random
 import json
-from collections import defaultdict
+from collections import defaultdict, deque
+import re
 
 keep_alive()
 
@@ -867,16 +868,11 @@ async def apply(ctx):
     class AppDropdown(discord.ui.Select):
         def __init__(self):
             options = [
-                discord.SelectOption(label="Tournament Staff", description="Apply as a Tournament Staff"),
-                discord.SelectOption(label="Esports Staff", description="Apply as an Esports Staff"),
-                discord.SelectOption(label="Clubs Manager", description="Apply as a Clubs Manager"),
-                discord.SelectOption(label="Server Moderation", description="Apply for Moderation role"),
-                discord.SelectOption(label="Collab application", description="Apply for a Collaboration/Sponsorship")
-            ]
+                discord.SelectOption(label="Apply now", description="Apply for management/collab/sponsorships"),]
             super().__init__(placeholder="Choose Application Type", min_values=1, max_values=1, options=options)
 
         async def callback(self, interaction: discord.Interaction):
-            form_url = "https://alphaenforcers.blogspot.com/p/apply-to-be-part-of-our-management.html"
+            form_url = "https://forms.gle/b5Ms8xv8XWrFmmdr7"
             try:
                 await interaction.user.send(
                     f"🎉 **Thanks for applying for {self.values[0]}!**\n📝 Fill your form here: {form_url}\n\nBe honest and detailed in your answers!"
@@ -1059,4 +1055,126 @@ async def help(ctx):
     embed.set_footer(text="Use % before each command | Example: %help")
     await ctx.send(embed=embed)
 
+class ChatterPoints(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        # Points and tracking
+        self.user_points = defaultdict(int)
+        self.user_message_history = defaultdict(deque)
+        self.user_last_message_time = defaultdict(float)
+        
+        # Conversation tracking
+        self.conversation_pairs = defaultdict(dict)
+        self.user_active_sessions = defaultdict(dict)
+        
+        # Spam warnings
+        self.spam_warnings = defaultdict(dict)
+        self.muted_users = set()
+        
+        # Configuration
+        self.short_phrases = {"lol", "wtf", "wow", "nice", "cool", "ok", "kk", "lmao", "rofl", "gg"}
+        self.SPAM_COOLDOWN = datetime.timedelta(hours=24)
+        self.counting_active = False
+        self.counting_channel = None
+        self.admin_id = 1327923421442736180  # Replace with your actual Discord user ID
+        
+        # Background tasks
+        self.cleanup_tasks.start()
+
+    def cog_unload(self):
+        self.cleanup_tasks.cancel()
+
+    def is_admin(self, ctx):
+        return ctx.author.id == self.admin_id
+
+    @tasks.loop(minutes=30)
+    async def cleanup_tasks(self):
+        """Clean up old records"""
+        now = datetime.datetime.utcnow()
+        
+        # Clean old conversations
+        for user_id in list(self.conversation_pairs.keys()):
+            for partner_id in list(self.conversation_pairs[user_id].keys()):
+                if (now - datetime.datetime.fromtimestamp(
+                    self.conversation_pairs[user_id][partner_id]['last_reply'])).days >= 1:
+                    del self.conversation_pairs[user_id][partner_id]
+        
+        # Clean expired warnings
+        for user_id in list(self.spam_warnings.keys()):
+            if (now - datetime.datetime.fromtimestamp(
+                self.spam_warnings[user_id]['last_warned'])).days >= 1:
+                del self.spam_warnings[user_id]
+        
+        # Clean inactive chat sessions
+        for user_id in list(self.user_active_sessions.keys()):
+            if now.timestamp() - self.user_active_sessions[user_id]['last_message'] > 300:
+                del self.user_active_sessions[user_id]
+
+    # [Previous helper methods remain the same...]
+
+    @commands.command(name="startcount")
+    async def start_counting(self, ctx, channel: discord.TextChannel):
+        """Start counting points in a specific channel (Admin only)"""
+        if not self.is_admin(ctx):
+            await ctx.send("❌ Only the admin can use this command!")
+            return
+            
+        self.counting_active = True
+        self.counting_channel = channel.id
+        await ctx.send(f"✅ Started counting points in {channel.mention}!")
+
+    @commands.command(name="stopcount")
+    async def stop_counting(self, ctx):
+        """Stop counting points (Admin only)"""
+        if not self.is_admin(ctx):
+            await ctx.send("❌ Only the admin can use this command!")
+            return
+            
+        self.counting_active = False
+        self.counting_channel = None
+        await ctx.send("⏹️ Stopped counting points.")
+
+    @commands.command(name="points")
+    async def check_points(self, ctx):
+        """Check your current points"""
+        if not self.counting_active:
+            await ctx.send("Point counting is not active right now.")
+            return
+            
+        points = self.user_points.get(ctx.author.id, 0)
+        await ctx.send(f"{ctx.author.mention}, you have {points} points!", delete_after=15)
+
+    @commands.command(name="pointslb")
+    async def points_leaderboard(self, ctx):
+        """Show the points leaderboard"""
+        if not self.counting_active:
+            await ctx.send("Point counting is not active right now.")
+            return
+            
+        sorted_users = sorted(self.user_points.items(), key=lambda x: x[1], reverse=True)[:10]
+        
+        if not sorted_users:
+            await ctx.send("No points have been awarded yet.")
+            return
+            
+        leaderboard = []
+        for rank, (user_id, points) in enumerate(sorted_users, 1):
+            user = self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)
+            leaderboard.append(f"{rank}. {user.display_name}: {points} points")
+        
+        embed = discord.Embed(
+            title="🏆 Points Leaderboard 🏆",
+            description="\n".join(leaderboard),
+            color=discord.Color.gold()
+        )
+        
+        if self.counting_channel:
+            channel = self.bot.get_channel(self.counting_channel)
+            embed.set_footer(text=f"Tracking active in {channel.mention if channel else 'deleted-channel'}")
+        
+        await ctx.send(embed=embed)
+
+def setup(bot):
+    bot.add_cog(ChatterPoints(bot))
+    
 bot.run(os.getenv('TOKEN'))
