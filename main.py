@@ -162,8 +162,7 @@ SHOP_ITEMS = {
     "add an emoji": {"price": 4000, "type": "low", "description": "Add 1 custom emoji to server"},
     "add a sticker": {"price": 5000, "type": "low", "description": "Add 1 custom sticker to server"},
     "custom role (2 weeks)": {"price": 4500, "type": "low", "description": "Custom role with color for 2 weeks"},
-    "+1 giveaway entry": {"price: 2000, "type": "low", "description": "One extra entry in giveaway"},
-}
+    "+1 giveaway entry": {"price": 2000, "type": "low", "description": "One extra entry in giveaway"},}
 
 welcome_messages = [
     "👋 {0.mention} joined! Invited by **{1}** 🎉",
