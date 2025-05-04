@@ -8,6 +8,7 @@ import random
 import json
 from collections import defaultdict, deque
 import re
+from pathlib import Path
 
 keep_alive()
 
@@ -17,42 +18,113 @@ INVITE_LEADERBOARD_FILE = 'invite_leaderboard.json'
 AUTHORIZED_GIVERS = [1327923421442736180, 1097776051393929227, 904290766225027083]
 TOKEN_FILE = 'tokens.json'
 WELCOME_CHANNEL_ID = 1363797902291374110
-MOD_LOG_CHANNEL_ID = 1361974563952529583
-SHOP_LOG_CHANNEL_ID = 1367515544479338586
+MOD_LOG_CHANNEL_ID = 1367575335381762249
+SHOP_LOG_CHANNEL_ID = 1367575335381762249
 FOUNDER_IDS = [1327923421442736180, 1097776051393929227, 904290766225027083]
 ADMIN_ID = 1327923421442736180  # Your user ID
 
+import json
+import os
+from pathlib import Path
+
+INVITE_DATA_FILE = 'invite_data.json'
+INVITE_LEADERBOARD_FILE = 'invite_leaderboard.json'
+
 def load_invite_data():
-    if not os.path.exists(INVITE_DATA_FILE):
-        return {}
+    """Load invite data from JSON file with error handling"""
     try:
+        if not os.path.exists(INVITE_DATA_FILE):
+            with open(INVITE_DATA_FILE, 'w') as f:
+                json.dump({}, f)
+            return {}
+        
         with open(INVITE_DATA_FILE, 'r') as f:
             data = json.load(f)
-            return {int(guild_id): guild_data for guild_id, guild_data in data.items()}
-    except:
+            # Convert keys to integers (guild IDs)
+            return {
+                int(guild_id): {
+                    str(invite_code): invite_info for invite_code, invite_info in guild_data.items()
+                } for guild_id, guild_data in data.items()
+            }
+    except (json.JSONDecodeError, IOError) as e:
+        print(f"Error loading invite data: {e}")
         return {}
 
 def save_invite_data(data):
+    """Save invite data to JSON file atomically"""
     try:
-        with open(INVITE_DATA_FILE, 'w') as f:
+        Path(INVITE_DATA_FILE).parent.mkdir(parents=True, exist_ok=True)
+        temp_file = INVITE_DATA_FILE + '.tmp'
+        with open(temp_file, 'w') as f:
             json.dump(data, f, indent=4)
+        os.replace(temp_file, INVITE_DATA_FILE)
     except Exception as e:
         print(f"Error saving invite data: {e}")
 
 def load_invite_leaderboard():
-    if not os.path.exists(INVITE_LEADERBOARD_FILE):
-        return {}
+    """Load invite leaderboard from JSON file"""
     try:
+        if not os.path.exists(INVITE_LEADERBOARD_FILE):
+            with open(INVITE_LEADERBOARD_FILE, 'w') as f:
+                json.dump({}, f)
+            return {}
+        
         with open(INVITE_LEADERBOARD_FILE, 'r') as f:
             data = json.load(f)
-            return {int(guild_id): {int(user_id): count for user_id, count in guild_data.items()} 
-                   for guild_id, guild_data in data.items()}
-    except:
+            # Convert keys to integers (guild and user IDs)
+            return {
+                int(guild_id): {
+                    int(user_id): count for user_id, count in guild_data.items()
+                } for guild_id, guild_data in data.items()
+            }
+    except (json.JSONDecodeError, IOError) as e:
+        print(f"Error loading leaderboard: {e}")
         return {}
 
 def save_invite_leaderboard(data):
-    with open(INVITE_LEADERBOARD_FILE, 'w') as f:
-        json.dump(data, f, indent=4)
+    """Save invite leaderboard atomically"""
+    try:
+        Path(INVITE_LEADERBOARD_FILE).parent.mkdir(parents=True, exist_ok=True)
+        temp_file = INVITE_LEADERBOARD_FILE + '.tmp'
+        with open(temp_file, 'w') as f:
+            json.dump(data, f, indent=4)
+        os.replace(temp_file, INVITE_LEADERBOARD_FILE)
+    except Exception as e:
+        print(f"Error saving leaderboard: {e}")
+
+# Initialize global storage
+invite_data = load_invite_data()
+invite_leaderboard = load_invite_leaderboard()
+
+def update_invite_leaderboard(guild_id, inviter_id):
+    """Update leaderboard counts for an inviter"""
+    global invite_leaderboard
+    guild_leaderboard = invite_leaderboard.setdefault(guild_id, {})
+    guild_leaderboard[inviter_id] = guild_leaderboard.get(inviter_id, 0) + 1
+    save_invite_leaderboard(invite_leaderboard)
+
+def get_invite_counts(guild_id, user_id=None):
+    """Get invite counts for a guild or specific user"""
+    guild_data = invite_leaderboard.get(guild_id, {})
+    if user_id:
+        return guild_data.get(user_id, 0)
+    return guild_data
+
+async def update_invite_cache(guild):
+    """Update the invite cache for a guild"""
+    global invite_data
+    try:
+        invites = await guild.invites()
+        invite_data[guild.id] = {
+            invite.code: {
+                "uses": invite.uses,
+                "inviter": invite.inviter.id if invite.inviter else None,
+                "is_vanity": invite.code == guild.vanity_url_code if guild.vanity_url_code else False
+            } for invite in invites
+        }
+        save_invite_data(invite_data)
+    except Exception as e:
+        print(f"Error updating invites for guild {guild.id}: {e}")
 
 # Bot Setup
 intents = discord.Intents.all()
@@ -90,7 +162,7 @@ SHOP_ITEMS = {
     "add an emoji": {"price": 4000, "type": "low", "description": "Add 1 custom emoji to server"},
     "add a sticker": {"price": 5000, "type": "low", "description": "Add 1 custom sticker to server"},
     "custom role (2 weeks)": {"price": 4500, "type": "low", "description": "Custom role with color for 2 weeks"},
-    
+    "+1 giveaway entry": {"price: 2000, "type": "low", "description": "One extra entry in giveaway"},
 }
 
 welcome_messages = [
@@ -315,33 +387,60 @@ async def process_message_queue():
 
 # Token System
 def load_tokens():
-    if not os.path.exists(TOKEN_FILE):
+    """Load token data from JSON file with error handling"""
+    try:
+        # Create file if it doesn't exist
+        if not os.path.exists(TOKEN_FILE):
+            with open(TOKEN_FILE, 'w') as f:
+                json.dump({}, f)
+            return {}
+        
+        # Read and parse existing file
+        with open(TOKEN_FILE, 'r') as f:
+            data = json.load(f)
+            # Convert string keys to integers (user IDs)
+            return {int(k): v for k, v in data.items()}
+    except (json.JSONDecodeError, IOError) as e:
+        print(f"Error loading tokens: {e}")
         return {}
-    with open(TOKEN_FILE, 'r') as f:
-        return json.load(f)
 
 def save_tokens(data):
-    with open(TOKEN_FILE, 'w') as f:
-        json.dump(data, f, indent=4)
+    """Save token data to JSON file with error handling"""
+    try:
+        # Create parent directory if needed
+        Path(TOKEN_FILE).parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write data atomically to prevent corruption
+        temp_file = TOKEN_FILE + '.tmp'
+        with open(temp_file, 'w') as f:
+            json.dump(data, f, indent=4)
+        
+        # Replace old file only after successful write
+        os.replace(temp_file, TOKEN_FILE)
+    except Exception as e:
+        print(f"Error saving tokens: {e}")
+
+# Global token storage
+tokens = load_tokens()
 
 def add_tokens(user_id, amount):
-    tokens = load_tokens()
-    user_id = str(user_id)
+    """Add tokens to a user's balance"""
+    global tokens
     tokens[user_id] = tokens.get(user_id, 0) + amount
-    save_tokens(data=tokens)
+    save_tokens(tokens)
 
 def subtract_tokens(user_id, amount):
-    tokens = load_tokens()
-    user_id = str(user_id)
+    """Subtract tokens from a user's balance if they have enough"""
+    global tokens
     if tokens.get(user_id, 0) >= amount:
         tokens[user_id] -= amount
-        save_tokens(data=tokens)
+        save_tokens(tokens)
         return True
     return False
 
 def get_balance(user_id):
-    tokens = load_tokens()
-    return tokens.get(str(user_id), 0)
+    """Get a user's token balance"""
+    return tokens.get(user_id, 0)
 
 # Invite Tracking
 async def update_invite_cache():
