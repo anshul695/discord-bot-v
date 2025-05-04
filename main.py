@@ -357,6 +357,7 @@ async def on_ready():
         name="you, be good or I'll spank"
     ))
     print(f"✅ {bot.user} is online!")
+    await bot.add_cog(ChatterPoints(bot))  # This loads the cog
     await update_invite_cache()
     save_invite_data_task.start()
     
