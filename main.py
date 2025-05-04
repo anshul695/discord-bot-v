@@ -172,7 +172,7 @@ class ChatterPoints(commands.Cog):
         self.counting_channel = None
         await ctx.send("⏹️ Stopped counting points.")
 
-        @commands.command(name="resetpoints")
+    @commands.command(name="resetpoints")
     @commands.is_owner()  # Only the bot owner can use this command
     async def reset_all_points(self, ctx):
         """Reset all points for all users"""
