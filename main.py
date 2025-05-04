@@ -20,6 +20,7 @@ WELCOME_CHANNEL_ID = 1363797902291374110
 MOD_LOG_CHANNEL_ID = 1361974563952529583
 SHOP_LOG_CHANNEL_ID = 1367515544479338586
 FOUNDER_IDS = [1327923421442736180, 1097776051393929227, 904290766225027083]
+ADMIN_ID = 1327923421442736180  # Your user ID
 
 def load_invite_data():
     if not os.path.exists(INVITE_DATA_FILE):
@@ -72,6 +73,7 @@ MESSAGE_SEND_INTERVAL = 0.5
 message_queue = asyncio.Queue(maxsize=MESSAGE_QUEUE_MAX_SIZE)
 is_processing_queue = False
 
+
 # Updated Shop items with categories (simplified version)
 SHOP_ITEMS = {
     "discord nitro": {"price": 25000, "type": "top", "description": "1 month of Discord Nitro"},
@@ -107,7 +109,165 @@ BALL_RESPONSES = [
     "Don't count on it.", "My reply is no.", "My sources say no.", "Outlook not so good.",
     "Very doubtful."
 ]
+class ChatterPoints(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.user_points = defaultdict(int)
+        self.user_message_history = defaultdict(deque)
+        self.user_last_message_time = defaultdict(float)
+        self.conversation_pairs = defaultdict(dict)
+        self.user_active_sessions = defaultdict(dict)
+        self.spam_warnings = defaultdict(dict)
+        self.muted_users = set()
+        self.short_phrases = {"lol", "wtf", "wow", "nice", "cool", "ok", "kk", "lmao", "rofl", "gg"}
+        self.SPAM_COOLDOWN = timedelta(hours=24)
+        self.counting_active = False
+        self.counting_channel = None
+        self.cleanup_tasks.start()
 
+    def cog_unload(self):
+        self.cleanup_tasks.cancel()
+
+    def is_admin(self, user_id):
+        return user_id == ADMIN_ID
+
+    @tasks.loop(minutes=30)
+    async def cleanup_tasks(self):
+        now = datetime.utcnow()
+        # Clean old conversations
+        for user_id in list(self.conversation_pairs.keys()):
+            for partner_id in list(self.conversation_pairs[user_id].keys()):
+                if (now - datetime.fromtimestamp(
+                    self.conversation_pairs[user_id][partner_id]['last_reply'])).days >= 1:
+                    del self.conversation_pairs[user_id][partner_id]
+        
+        # Clean expired warnings
+        for user_id in list(self.spam_warnings.keys()):
+            if (now - datetime.fromtimestamp(
+                self.spam_warnings[user_id]['last_warned'])).days >= 1:
+                del self.spam_warnings[user_id]
+        
+        # Clean inactive chat sessions
+        for user_id in list(self.user_active_sessions.keys()):
+            if now.timestamp() - self.user_active_sessions[user_id]['last_message'] > 300:
+                del self.user_active_sessions[user_id]
+
+    @commands.command(name="startcount")
+    async def start_counting(self, ctx, channel: discord.TextChannel):
+        if not self.is_admin(ctx.author.id):
+            await ctx.send("❌ Only the admin can use this command!")
+            return
+            
+        self.counting_active = True
+        self.counting_channel = channel.id
+        await ctx.send(f"✅ Started counting points in {channel.mention}!")
+
+    @commands.command(name="stopcount")
+    async def stop_counting(self, ctx):
+        if not self.is_admin(ctx.author.id):
+            await ctx.send("❌ Only the admin can use this command!")
+            return
+            
+        self.counting_active = False
+        self.counting_channel = None
+        await ctx.send("⏹️ Stopped counting points.")
+
+    @commands.command(name="points")
+    async def check_points(self, ctx):
+        if not self.counting_active:
+            await ctx.send("Point counting is not active right now.")
+            return
+            
+        points = self.user_points.get(ctx.author.id, 0)
+        await ctx.send(f"{ctx.author.mention}, you have {points} points!", delete_after=15)
+
+    @commands.command(name="pointslb")
+    async def points_leaderboard(self, ctx):
+        if not self.counting_active:
+            await ctx.send("Point counting is not active right now.")
+            return
+            
+        sorted_users = sorted(self.user_points.items(), key=lambda x: x[1], reverse=True)[:10]
+        
+        if not sorted_users:
+            await ctx.send("No points have been awarded yet.")
+            return
+            
+        leaderboard = []
+        for rank, (user_id, points) in enumerate(sorted_users, 1):
+            user = self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)
+            leaderboard.append(f"{rank}. {user.display_name}: {points} points")
+        
+        embed = discord.Embed(
+            title="🏆 Points Leaderboard 🏆",
+            description="\n".join(leaderboard),
+            color=discord.Color.gold()
+        )
+        
+        if self.counting_channel:
+            channel = self.bot.get_channel(self.counting_channel)
+            embed.set_footer(text=f"Tracking active in {channel.mention if channel else 'deleted-channel'}")
+        
+        await ctx.send(embed=embed)
+
+    async def calculate_message_points(self, message):
+        content = message.content.strip().lower()
+        words = [w for w in content.split() if len(w) > 0]
+        word_count = len(words)
+        
+        if word_count <= 1 and content in self.short_phrases:
+            return 1
+        elif word_count <= 5:
+            return 1
+        elif 6 <= word_count <= 12:
+            return 2
+        else:
+            return 3
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if (message.author.bot or not message.guild or 
+            not self.counting_active or 
+            message.channel.id != self.counting_channel):
+            return
+            
+        user_id = message.author.id
+        current_time = message.created_at.timestamp()
+        
+        # Calculate base points
+        base_points = await self.calculate_message_points(message)
+        total_points = base_points
+        
+        # Update points
+        self.user_points[user_id] += total_points
+        
+        # Update chat session
+        if user_id not in self.user_active_sessions:
+            self.user_active_sessions[user_id] = {
+                'start_time': current_time,
+                'last_message': current_time
+            }
+        else:
+            session = self.user_active_sessions[user_id]
+            if current_time - session['last_message'] > 300:
+                if current_time - session['start_time'] >= 7200:
+                    self.user_points[user_id] += 10
+                    try:
+                        await message.author.send("🎉 +10 points for chatting 2 hours straight!")
+                    except:
+                        pass
+                self.user_active_sessions[user_id] = {
+                    'start_time': current_time,
+                    'last_message': current_time
+                }
+            else:
+                session['last_message'] = current_time
+        
+        # Milestone notifications
+        total = self.user_points[user_id]
+        if total % 100 == 0:
+            await message.channel.send(f"🎉 {message.author.mention} has reached {total} points!", delete_after=10)
+    
 # Utility Functions
 def make_embed(title=None, description=None, color=discord.Color.blue()):
     embed = discord.Embed(title=title, description=description, color=color)
@@ -343,6 +503,20 @@ async def on_message(message):
                 pass
 
     await bot.process_commands(message)
+
+# Error handling
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        return
+    elif isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send(f"❌ Missing required argument: {error.param.name}")
+    elif isinstance(error, commands.MissingPermissions):
+        await ctx.send("❌ You don't have permission to use this command!")
+    elif isinstance(error, commands.BadArgument):
+        await ctx.send(f"❌ Invalid argument: {error}")
+    else:
+        print(f"Ignoring exception in command {ctx.command}: {error}")
 
 #################################
 # --- MODERATION COMMANDS --- #
@@ -1054,127 +1228,5 @@ async def help(ctx):
     
     embed.set_footer(text="Use % before each command | Example: %help")
     await ctx.send(embed=embed)
-
-class ChatterPoints(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-        # Points and tracking
-        self.user_points = defaultdict(int)
-        self.user_message_history = defaultdict(deque)
-        self.user_last_message_time = defaultdict(float)
-        
-        # Conversation tracking
-        self.conversation_pairs = defaultdict(dict)
-        self.user_active_sessions = defaultdict(dict)
-        
-        # Spam warnings
-        self.spam_warnings = defaultdict(dict)
-        self.muted_users = set()
-        
-        # Configuration
-        self.short_phrases = {"lol", "wtf", "wow", "nice", "cool", "ok", "kk", "lmao", "rofl", "gg"}
-        self.SPAM_COOLDOWN = datetime.timedelta(hours=24)
-        self.counting_active = False
-        self.counting_channel = None
-        self.admin_id = 1327923421442736180  # Replace with your actual Discord user ID
-        
-        # Background tasks
-        self.cleanup_tasks.start()
-
-    def cog_unload(self):
-        self.cleanup_tasks.cancel()
-
-    def is_admin(self, ctx):
-        return ctx.author.id == self.admin_id
-
-    @tasks.loop(minutes=30)
-    async def cleanup_tasks(self):
-        """Clean up old records"""
-        now = datetime.datetime.utcnow()
-        
-        # Clean old conversations
-        for user_id in list(self.conversation_pairs.keys()):
-            for partner_id in list(self.conversation_pairs[user_id].keys()):
-                if (now - datetime.datetime.fromtimestamp(
-                    self.conversation_pairs[user_id][partner_id]['last_reply'])).days >= 1:
-                    del self.conversation_pairs[user_id][partner_id]
-        
-        # Clean expired warnings
-        for user_id in list(self.spam_warnings.keys()):
-            if (now - datetime.datetime.fromtimestamp(
-                self.spam_warnings[user_id]['last_warned'])).days >= 1:
-                del self.spam_warnings[user_id]
-        
-        # Clean inactive chat sessions
-        for user_id in list(self.user_active_sessions.keys()):
-            if now.timestamp() - self.user_active_sessions[user_id]['last_message'] > 300:
-                del self.user_active_sessions[user_id]
-
-    # [Previous helper methods remain the same...]
-
-    @commands.command(name="startcount")
-    async def start_counting(self, ctx, channel: discord.TextChannel):
-        """Start counting points in a specific channel (Admin only)"""
-        if not self.is_admin(ctx):
-            await ctx.send("❌ Only the admin can use this command!")
-            return
-            
-        self.counting_active = True
-        self.counting_channel = channel.id
-        await ctx.send(f"✅ Started counting points in {channel.mention}!")
-
-    @commands.command(name="stopcount")
-    async def stop_counting(self, ctx):
-        """Stop counting points (Admin only)"""
-        if not self.is_admin(ctx):
-            await ctx.send("❌ Only the admin can use this command!")
-            return
-            
-        self.counting_active = False
-        self.counting_channel = None
-        await ctx.send("⏹️ Stopped counting points.")
-
-    @commands.command(name="points")
-    async def check_points(self, ctx):
-        """Check your current points"""
-        if not self.counting_active:
-            await ctx.send("Point counting is not active right now.")
-            return
-            
-        points = self.user_points.get(ctx.author.id, 0)
-        await ctx.send(f"{ctx.author.mention}, you have {points} points!", delete_after=15)
-
-    @commands.command(name="pointslb")
-    async def points_leaderboard(self, ctx):
-        """Show the points leaderboard"""
-        if not self.counting_active:
-            await ctx.send("Point counting is not active right now.")
-            return
-            
-        sorted_users = sorted(self.user_points.items(), key=lambda x: x[1], reverse=True)[:10]
-        
-        if not sorted_users:
-            await ctx.send("No points have been awarded yet.")
-            return
-            
-        leaderboard = []
-        for rank, (user_id, points) in enumerate(sorted_users, 1):
-            user = self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)
-            leaderboard.append(f"{rank}. {user.display_name}: {points} points")
-        
-        embed = discord.Embed(
-            title="🏆 Points Leaderboard 🏆",
-            description="\n".join(leaderboard),
-            color=discord.Color.gold()
-        )
-        
-        if self.counting_channel:
-            channel = self.bot.get_channel(self.counting_channel)
-            embed.set_footer(text=f"Tracking active in {channel.mention if channel else 'deleted-channel'}")
-        
-        await ctx.send(embed=embed)
-
-def setup(bot):
-    bot.add_cog(ChatterPoints(bot))
     
 bot.run(os.getenv('TOKEN'))
