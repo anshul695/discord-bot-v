@@ -92,7 +92,7 @@ def save_invite_leaderboard(data):
     except Exception as e:
         print(f"Error saving leaderboard: {e}")
 
-# Initialize global storage
+# Initialize global storage 1
 invite_data = load_invite_data()
 invite_leaderboard = load_invite_leaderboard()
 
