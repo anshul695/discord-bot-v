@@ -12,7 +12,7 @@ from pathlib import Path
 
 keep_alive()
 
-# Configuration
+# Configurations
 INVITE_DATA_FILE = 'invite_data.json'
 INVITE_LEADERBOARD_FILE = 'invite_leaderboard.json'
 AUTHORIZED_GIVERS = [1327923421442736180, 1097776051393929227, 904290766225027083]
