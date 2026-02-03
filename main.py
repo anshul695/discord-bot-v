@@ -12,6 +12,7 @@ from pathlib import Path
 
 keep_alive()
 
+
 # Configurationss
 INVITE_DATA_FILE = 'invite_data.json'
 INVITE_LEADERBOARD_FILE = 'invite_leaderboard.json'
